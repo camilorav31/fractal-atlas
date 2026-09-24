@@ -5,7 +5,12 @@ sets are computed per pixel in GLSL and stay fluid down to **10¹³×** magnific
 L-systems and iterated function systems are built and rasterized in a **Web Worker**,
 so a million-segment plant or a twelve-million-point fern never blocks the UI.
 
-**[→ Open the live demo](https://fractal-atlas.vercel.app)**
+<p align="center">
+  <a href="https://fractal-atlas.vercel.app"><b>Live demo</b></a> ·
+  <a href="docs/showreel.mp4">Showreel (1080p)</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#the-mathematics">The mathematics</a>
+</p>
 
 <p align="center">
   <a href="docs/showreel.mp4">
@@ -17,10 +22,12 @@ so a million-segment plant or a twelve-million-point fern never blocks the UI.
 
 | | Fractal | Engine | Highlights |
 |---|---|---|---|
-| Nº 01 | **Mandelbrot set** | WebGL2 fragment shader | Emulated double precision to 10¹³×, 24× progressive supersampling, distance-estimated edges |
-| Nº 02 | **Julia sets** | WebGL2 fragment shader | Pick *c* live on a Mandelbrot map, orbit animation, two-way Mandelbrot ⇄ Julia bridge |
-| Nº 03 | **L-systems** | Web Worker + OffscreenCanvas | Live grammar editor, 8 classic systems, seeded organic variance, *Grow* replay |
-| Nº 04 | **Iterated function systems** | Web Worker + chaos game | Log-density tone mapping, colour by map history, affine map editor with contraction check |
+| Nº 01 | **[Mandelbrot set](https://fractal-atlas.vercel.app/?f=mandelbrot&x=-0.7436438870371587&y=0.131825904205312&z=7&p=ember&d=0.6)** | WebGL2 fragment shader | Emulated double precision to 10¹³×, 24× progressive supersampling, distance-estimated edges |
+| Nº 02 | **[Julia sets](https://fractal-atlas.vercel.app/?f=julia&cr=-0.123&ci=0.745&x=0&y=0&z=0&p=gilt&d=1.4)** | WebGL2 fragment shader | Pick *c* live on a Mandelbrot map, orbit animation, two-way Mandelbrot ⇄ Julia bridge |
+| Nº 03 | **[L-systems](https://fractal-atlas.vercel.app/?f=lsystem&ls=tree&p=gilt&d=0.8)** | Web Worker + OffscreenCanvas | Live grammar editor, 8 classic systems, seeded organic variance, *Grow* replay |
+| Nº 04 | **[Iterated function systems](https://fractal-atlas.vercel.app/?f=ifs&is=fern&p=aurora&d=0.9)** | Web Worker + chaos game | Log-density tone mapping, colour by map history, affine map editor with contraction check |
+
+<sub>Each name opens that fractal in the live demo — every view is just a URL.</sub>
 
 ### Features
 
@@ -389,11 +396,20 @@ seamlessly under `REPEAT` sampling.
 ## URL state
 
 Every change is mirrored, debounced, into the query string with
-`history.replaceState`, so zooming doesn't flood the back button:
+`history.replaceState`, so zooming doesn't flood the back button. A few links
+to try:
+
+| View | Link |
+|---|---|
+| Seahorse Valley at 10⁷×, in df64 | [`?f=mandelbrot&x=-0.74364…&z=7&p=ember`](https://fractal-atlas.vercel.app/?f=mandelbrot&x=-0.7436438870371587&y=0.131825904205312&z=7&p=ember&d=0.6) |
+| The Douady rabbit | [`?f=julia&cr=-0.123&ci=0.745&p=gilt`](https://fractal-atlas.vercel.app/?f=julia&cr=-0.123&ci=0.745&x=0&y=0&z=0&p=gilt&d=1.4) |
+| A bracketed L-system tree | [`?f=lsystem&ls=tree&p=gilt`](https://fractal-atlas.vercel.app/?f=lsystem&ls=tree&p=gilt&d=0.8) |
+| The Barnsley fern | [`?f=ifs&is=fern&p=aurora`](https://fractal-atlas.vercel.app/?f=ifs&is=fern&p=aurora&d=0.9) |
+
+A full link spells out every parameter:
 
 ```
 ?f=mandelbrot&x=-0.7436438870371587&y=0.131825904205312&z=11.000&it=400&ai=1&p=ember&d=0.600&o=0.000&e=0.60&in=050507
-?f=julia&cr=-0.123&ci=0.745&x=0&y=0&z=0&p=gilt
 ?f=lsystem&ls=plant&n=7&an=25&jt=0.15&sd=7&cb=depth&p=aurora
 ?f=ifs&is=fern&pt=3000000&ex=1.40&gm=2.20&cb=map&p=aurora
 ```
