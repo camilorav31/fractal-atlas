@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ViewportStats } from '../render/ViewportRenderer';
+import type { SessionState, ViewportStats } from '../render/ViewportRenderer';
 
 export type PanelTab = 'parameters' | 'presets';
 
@@ -13,6 +13,8 @@ interface UiStore {
   panelTab: PanelTab;
   exportOpen: boolean;
   stats: ViewportStats | null;
+  /** The render session: which fractal is loading or live. */
+  session: SessionState | null;
   toast: Toast | null;
   /** Julia's c is tracing a loop (see useJuliaOrbit). */
   juliaOrbit: boolean;
@@ -23,7 +25,8 @@ interface UiStore {
   setJuliaOrbit(active: boolean): void;
   setPanelTab(tab: PanelTab): void;
   setExportOpen(open: boolean): void;
-  setStats(stats: ViewportStats): void;
+  setStats(stats: ViewportStats | null): void;
+  setSession(session: SessionState): void;
   notify(message: string): void;
 }
 
@@ -34,6 +37,8 @@ export const useUiStore = create<UiStore>()((set) => ({
   panelTab: 'parameters',
   exportOpen: false,
   stats: null,
+  session: null,
+  setSession: (session) => set({ session }),
   toast: null,
   juliaOrbit: false,
   lsystemGrowing: false,

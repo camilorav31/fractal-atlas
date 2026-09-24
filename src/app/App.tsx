@@ -5,6 +5,7 @@ import { cx } from '../components/controls/cx';
 import { Hint } from '../components/hud/Hint';
 import { Placard } from '../components/hud/Placard';
 import { Readout } from '../components/hud/Readout';
+import { SessionLoader } from '../components/hud/SessionLoader';
 import { Toast } from '../components/hud/Toast';
 import { ControlPanel } from '../components/panels/ControlPanel';
 import { ExportDialog } from '../components/panels/ExportDialog';
@@ -68,6 +69,8 @@ function Atlas({ onReady, viewport }: { onReady(v: Viewport | null): void; viewp
       <div className={cx('fixed bottom-8 left-[calc(50%-172px)] z-10 hidden -translate-x-1/2 xl:block', chrome)}>
         <Hint />
       </div>
+
+      <SessionLoader />
 
       <ControlPanel hidden={hidden} />
 

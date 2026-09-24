@@ -41,6 +41,15 @@ export class RenderTarget {
     }
   }
 
+  /** Drops the texture storage (keeps the handles); the next resize reallocates. */
+  release(): void {
+    const { gl } = this;
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    this.width = 0;
+    this.height = 0;
+  }
+
   dispose(): void {
     this.gl.deleteTexture(this.texture);
     this.gl.deleteFramebuffer(this.framebuffer);

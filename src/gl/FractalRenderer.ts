@@ -1,7 +1,8 @@
 import vertexShader from '../shaders/fullscreen.vert';
 import presentShader from '../shaders/present.frag';
 import { FRACTALS, bindFractal } from '../fractals/registry';
-import type { EscapeScene } from '../fractals/types';
+import type { EscapeKind, EscapeScene } from '../fractals/types';
+import type { ExportOptions, RenderEngine, ViewportSize } from '../render/engine';
 import { hexToLinear } from '../utils/color';
 import { resolveStops } from '../utils/palettes';
 import { needsDoublePrecision, pixelSize, splitDouble } from '../utils/viewMath';
@@ -16,12 +17,6 @@ export interface RenderStats {
   iterations: number;
   /** Fraction of full resolution used for the last interactive frame. */
   resolutionScale: number;
-}
-
-export interface ExportOptions {
-  samples: number;
-  onProgress?: (fraction: number) => void;
-  signal?: AbortSignal;
 }
 
 /** How long the scene must stay unchanged before refinement starts (ms). */
@@ -47,10 +42,17 @@ const MAX_DPR = 2;
  * While the scene is changing, a single sample is drawn at a dynamic
  * resolution tuned from frame time, keeping interaction at display rate
  * even for deep df64 views with thousands of iterations.
+ *
+ * Lifecycle: created suspended. Each fractal's shader is compiled the first
+ * time it is prepared (off the main thread where supported) and cached — a
+ * linked program is a few KB, recompiling costs 50–200 ms. `suspend` frees
+ * what actually weighs: the drawing buffer and the RGBA16F accumulation
+ * buffer (~30 MB on a Retina display).
  */
-export class FractalRenderer {
+export class FractalRenderer implements RenderEngine<EscapeScene> {
   private readonly gl: WebGL2RenderingContext;
-  private programs!: Map<string, ShaderProgram>;
+  private programs = new Map<EscapeKind, ShaderProgram>();
+  private compiling = new Map<EscapeKind, Promise<ShaderProgram>>();
   private present!: ShaderProgram;
   private vao!: WebGLVertexArrayObject;
   private accumulation!: RenderTarget;
@@ -70,6 +72,7 @@ export class FractalRenderer {
   private renderedScale = 1;
   private dynamicScale = 1;
   private paused = false;
+  private suspended = true;
   private offscreenQueue: Promise<unknown> = Promise.resolve();
   private contextLost = false;
 
@@ -101,10 +104,31 @@ export class FractalRenderer {
     this.requestFrame();
   }
 
-  resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): void {
-    this.cssWidth = Math.max(1, cssWidth);
-    this.cssHeight = Math.max(1, cssHeight);
+  /** Compiles the scene's shader if needed; resolves once it can be drawn. */
+  async prepare(scene: EscapeScene): Promise<void> {
+    await this.programFor(scene.fractal.kind);
+  }
+
+  resume(size: ViewportSize): void {
+    this.suspended = false;
+    this.resize(size);
+  }
+
+  suspend(): void {
+    this.suspended = true;
+    cancelAnimationFrame(this.rafId);
+    this.rafId = 0;
+    if (!this.contextLost) this.accumulation.release();
+    // Shrinking the canvas releases its drawing buffer too.
+    this.canvas.width = 1;
+    this.canvas.height = 1;
+  }
+
+  resize({ width, height, devicePixelRatio }: ViewportSize): void {
+    this.cssWidth = Math.max(1, width);
+    this.cssHeight = Math.max(1, height);
     this.dpr = Math.min(devicePixelRatio, MAX_DPR);
+    if (this.suspended) return; // applied on resume
     this.canvas.width = Math.round(this.cssWidth * this.dpr);
     this.canvas.height = Math.round(this.cssHeight * this.dpr);
     if (!this.contextLost) this.accumulation.resize(this.canvas.width, this.canvas.height);
@@ -112,9 +136,20 @@ export class FractalRenderer {
     this.requestFrame();
   }
 
-  /** Viewport size in CSS pixels, for mapping pointer input to the plane. */
-  get viewportSize(): { width: number; height: number } {
-    return { width: this.cssWidth, height: this.cssHeight };
+  private programFor(kind: EscapeKind): Promise<ShaderProgram> {
+    const ready = this.programs.get(kind);
+    if (ready) return Promise.resolve(ready);
+    let pending = this.compiling.get(kind);
+    if (!pending) {
+      pending = ShaderProgram.compile(this.gl, vertexShader, FRACTALS[kind].fragmentShader)
+        .then((program) => {
+          this.programs.set(kind, program);
+          return program;
+        })
+        .finally(() => this.compiling.delete(kind));
+      this.compiling.set(kind, pending);
+    }
+    return pending;
   }
 
   /**
@@ -136,6 +171,7 @@ export class FractalRenderer {
     { samples, onProgress, signal }: ExportOptions,
   ): Promise<HTMLCanvasElement> {
     const { gl } = this;
+    await this.programFor(scene.fractal.kind);
     const tile = Math.min(
       EXPORT_TILE,
       gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
@@ -195,12 +231,17 @@ export class FractalRenderer {
   // --- Frame loop -----------------------------------------------------------
 
   private requestFrame(): void {
-    if (!this.rafId && !this.contextLost) this.rafId = requestAnimationFrame(this.frame);
+    if (!this.rafId && !this.contextLost && !this.suspended) this.rafId = requestAnimationFrame(this.frame);
   }
 
   private frame = (time: number): void => {
     this.rafId = 0;
-    if (this.paused || !this.scene) return;
+    if (this.paused || this.suspended || !this.scene) return;
+    if (!this.programs.has(this.scene.fractal.kind)) {
+      // Not compiled yet (e.g. after a context restore): compile, then draw.
+      void this.programFor(this.scene.fractal.kind).then(() => this.requestFrame());
+      return;
+    }
 
     const frameDelta = time - this.lastFrameTime;
     this.lastFrameTime = time;
@@ -363,13 +404,13 @@ export class FractalRenderer {
 
   private initResources(): void {
     const { gl } = this;
-    this.programs = new Map(
-      Object.values(FRACTALS).map((def) => [def.kind, new ShaderProgram(gl, vertexShader, def.fragmentShader)]),
-    );
-    this.present = new ShaderProgram(gl, vertexShader, presentShader);
+    // Fractal programs are compiled lazily, per kind, in programFor().
+    this.programs = new Map();
+    this.compiling = new Map();
+    this.present = ShaderProgram.create(gl, vertexShader, presentShader);
     this.vao = gl.createVertexArray();
     this.accumulation = new RenderTarget(gl, accumulationFormat(gl));
-    this.accumulation.resize(Math.max(1, this.canvas.width), Math.max(1, this.canvas.height));
+    if (!this.suspended) this.accumulation.resize(this.canvas.width, this.canvas.height);
     this.palette = new PaletteTexture(gl);
   }
 

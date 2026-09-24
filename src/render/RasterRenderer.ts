@@ -1,5 +1,5 @@
 import type { ComplexView, RasterScene } from '../fractals/types';
-import type { ExportOptions } from '../gl/FractalRenderer';
+import type { ExportOptions, RenderEngine, ViewportSize } from './engine';
 import { pixelSize } from '../utils/viewMath';
 import type { RasterRequest, RasterResponse, RasterStats } from './rasterProtocol';
 
@@ -26,9 +26,17 @@ interface Frame {
  * - **Instant preview**: until the fresh frame lands, the last bitmap is
  *   redrawn with the affine transform from its view to the current one, so
  *   pan and zoom track the pointer at display rate.
+ *
+ * Lifecycle: the worker is spawned on first use and terminated by
+ * `suspend`, which frees its thread and its geometry cache (up to ~50 MB)
+ * along with the canvas backing store.
  */
-export class RasterRenderer {
-  private readonly worker: Worker;
+export class RasterRenderer implements RenderEngine<RasterScene> {
+  private worker: Worker | null = null;
+  private suspended = true;
+  private devicePixelRatio = 1;
+  /** Resolvers waiting for the next screen frame to land (see prepare). */
+  private frameWaiters: { resolve(): void; reject(error: Error): void }[] = [];
   private readonly ctx: CanvasRenderingContext2D;
   private scene: RasterScene | null = null;
   private frame: Frame | null = null;
@@ -47,23 +55,48 @@ export class RasterRenderer {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D is not supported on this device.');
     this.ctx = ctx;
-    this.worker = new Worker(new URL('../workers/raster.worker.ts', import.meta.url), { type: 'module' });
-    this.worker.onmessage = (event: MessageEvent<RasterResponse>) => this.receive(event.data);
   }
 
   setScene(scene: RasterScene): void {
     this.scene = scene;
     this.dirty = true;
+    if (this.suspended) return;
     this.drawPreview();
     this.pump();
   }
 
-  resize(cssWidth: number, cssHeight: number, devicePixelRatio: number): void {
-    this.cssWidth = Math.max(1, cssWidth);
-    this.cssHeight = Math.max(1, cssHeight);
-    const dpr = Math.min(devicePixelRatio, MAX_DPR);
-    this.canvas.width = Math.round(this.cssWidth * dpr);
-    this.canvas.height = Math.round(this.cssHeight * dpr);
+  /** Shows `scene` and resolves once its first frame is on screen. */
+  prepare(scene: RasterScene): Promise<void> {
+    const landed = new Promise<void>((resolve, reject) => this.frameWaiters.push({ resolve, reject }));
+    this.setScene(scene);
+    return landed;
+  }
+
+  resume(size: ViewportSize): void {
+    this.suspended = false;
+    this.resize(size);
+  }
+
+  suspend(): void {
+    this.suspended = true;
+    this.worker?.terminate();
+    this.worker = null;
+    this.inflight = null;
+    this.dirty = true;
+    this.frame?.bitmap.close();
+    this.frame = null;
+    this.failPending(new Error('Raster session suspended'));
+    this.canvas.width = 1;
+    this.canvas.height = 1;
+  }
+
+  resize({ width, height, devicePixelRatio }: ViewportSize): void {
+    this.cssWidth = Math.max(1, width);
+    this.cssHeight = Math.max(1, height);
+    this.devicePixelRatio = Math.min(devicePixelRatio, MAX_DPR);
+    if (this.suspended) return; // applied on resume
+    this.canvas.width = Math.round(this.cssWidth * this.devicePixelRatio);
+    this.canvas.height = Math.round(this.cssHeight * this.devicePixelRatio);
     this.dirty = true;
     this.drawPreview();
     this.pump();
@@ -91,20 +124,32 @@ export class RasterRenderer {
   }
 
   dispose(): void {
-    this.worker.terminate();
+    this.worker?.terminate();
+    this.worker = null;
     this.frame?.bitmap.close();
-    for (const job of this.jobs.values()) job.reject(new Error('Renderer disposed'));
-    this.jobs.clear();
+    this.failPending(new Error('Renderer disposed'));
   }
 
   // --- Worker traffic ---------------------------------------------------------
 
+  /** Spawns the worker on first use (also for exports while suspended). */
   private post(request: RasterRequest): void {
+    if (!this.worker) {
+      this.worker = new Worker(new URL('../workers/raster.worker.ts', import.meta.url), { type: 'module' });
+      this.worker.onmessage = (event: MessageEvent<RasterResponse>) => this.receive(event.data);
+    }
     this.worker.postMessage(request);
   }
 
+  private failPending(error: Error): void {
+    for (const job of this.jobs.values()) job.reject(error);
+    this.jobs.clear();
+    for (const waiter of this.frameWaiters) waiter.reject(error);
+    this.frameWaiters = [];
+  }
+
   private pump(): void {
-    if (this.inflight || !this.dirty || !this.scene) return;
+    if (this.suspended || this.inflight || !this.dirty || !this.scene) return;
     this.dirty = false;
     const id = this.nextId++;
     this.inflight = { id, view: this.scene.view };
@@ -131,8 +176,14 @@ export class RasterRenderer {
       this.frame = { bitmap: response.bitmap, view, width: response.bitmap.width, height: response.bitmap.height };
       this.stats = response.stats;
       this.drawPreview();
+      const waiters = this.frameWaiters;
+      this.frameWaiters = [];
+      waiters.forEach((w) => w.resolve());
     } else {
       console.error('L-system render failed:', response.error);
+      const waiters = this.frameWaiters;
+      this.frameWaiters = [];
+      waiters.forEach((w) => w.reject(new Error(response.error)));
     }
     this.pump();
     this.emit();

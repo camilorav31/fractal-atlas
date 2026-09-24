@@ -68,7 +68,8 @@ src/
 │   ├── lsystem/    grammar (parse, validate, size estimate), turtle, rasterizer, presets
 │   ├── iterations.ts  shared depth-scaled iteration policy
 │   └── curated.ts  curated views per fractal
-├── render/         ViewportRenderer (routes scenes by family), RasterRenderer (worker client)
+├── render/         ViewportRenderer (session manager), engine.ts (lifecycle contract),
+│                     RasterRenderer (worker client)
 ├── workers/        raster.worker.ts: grammar → geometry → OffscreenCanvas → ImageBitmap
 ├── gl/             Framework-free WebGL2 layer
 │   ├── FractalRenderer.ts   frame loop, accumulation, tiled export
@@ -113,6 +114,25 @@ A few decisions worth calling out:
 - **The shaders share one escape loop.** Mandelbrot and Julia iterate the same map and differ only in the starting point and in what the derivative is taken with respect to. `escape.glsl` implements the loop once, in both fp32 and df64, and each fragment shader is about 20 lines.
 - **Two render families behind one interface.** `ViewportRenderer` routes each scene to the WebGL pipeline or the worker pipeline and shows the matching canvas. Everything above it (export, thumbnails, presets, URL, pan/zoom) is family-agnostic. The type system enforces the split: `FractalState = EscapeTimeState | RasterState`, and the GPU renderer only accepts an `EscapeScene`.
 - **The GL layer knows nothing about React**, and the interaction controller knows nothing about WebGL. Either could be reused on its own.
+
+### Render sessions: one pipeline at a time
+
+`ViewportRenderer` owns the render **session**. Exactly one pipeline is live,
+and every engine implements the same lifecycle:
+`resume → prepare(scene) → setScene… → suspend`.
+
+| | Created | Released on `suspend` | Kept (cheap to hold, costly to rebuild) |
+|---|---|---|---|
+| **WebGL** (Mandelbrot, Julia) | first escape-time view | drawing buffer, RGBA16F accumulation buffer (~30 MB on Retina) | context, compiled programs (a few KB each) |
+| **Worker** (L-systems) | first L-system view | worker thread, geometry cache (up to ~50 MB), canvas backing store | nothing |
+
+- **Lazy.** Open an L-system first and no WebGL context is ever created. Stay on Mandelbrot and no worker is spawned.
+- **Non-blocking compilation.** Shaders compile with `KHR_parallel_shader_compile` where available, polled off the main thread, and are cached per kind. As a result, Mandelbrot ⇄ Julia is instant after first use.
+- **Loading state.** A switch reports `loading → ready` with its task ("Compiling shaders", "Starting worker"). The canvas crossfades, and the indicator only appears if loading takes longer than 160 ms, so warm switches never flash.
+- **Race-safe.** Scene updates that arrive during `prepare` are buffered, and only the latest is applied. A generation token discards a switch that a newer one superseded, for example clicking Julia and then an L-system before Julia's shader finishes compiling.
+- **Graceful degradation.** Engine creation happens inside the session. A device without WebGL2 gets an error card on the escape-time fractals, while L-systems keep working.
+
+Measured on an M1 in Chrome: a cold Julia compile takes 44 ms, a cold worker start with its first frame takes 56 ms, and a warm family switch takes about 16 ms. The lifecycle is unit-tested with fake engines (`ViewportRenderer.test.ts`).
 
 ### The render pipeline
 

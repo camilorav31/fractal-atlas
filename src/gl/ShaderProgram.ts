@@ -4,28 +4,33 @@
  * so a GLSL typo points at the offending line instead of "link failed".
  */
 export class ShaderProgram {
-  readonly program: WebGLProgram;
   private readonly locations = new Map<string, WebGLUniformLocation | null>();
 
-  constructor(
+  private constructor(
     private readonly gl: WebGL2RenderingContext,
-    vertexSource: string,
-    fragmentSource: string,
-  ) {
-    const vs = compile(gl, gl.VERTEX_SHADER, vertexSource);
-    const fs = compile(gl, gl.FRAGMENT_SHADER, fragmentSource);
-    const program = gl.createProgram();
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-    gl.deleteShader(vs);
-    gl.deleteShader(fs);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      const log = gl.getProgramInfoLog(program);
-      gl.deleteProgram(program);
-      throw new Error(`Program link failed: ${log}`);
+    readonly program: WebGLProgram,
+  ) {}
+
+  /** Compiles synchronously — fine for tiny shaders like the present pass. */
+  static create(gl: WebGL2RenderingContext, vertexSource: string, fragmentSource: string): ShaderProgram {
+    const pending = startCompile(gl, vertexSource, fragmentSource);
+    return new ShaderProgram(gl, finishCompile(gl, pending));
+  }
+
+  /**
+   * Compiles without blocking the main thread. With KHR_parallel_shader_compile
+   * the driver compiles on a background thread and we poll for completion;
+   * without it we still yield first so a loading state can paint. The df64
+   * escape shaders are large enough that this matters on some drivers.
+   */
+  static async compile(gl: WebGL2RenderingContext, vertexSource: string, fragmentSource: string): Promise<ShaderProgram> {
+    const parallel = gl.getExtension('KHR_parallel_shader_compile') as { COMPLETION_STATUS_KHR: GLenum } | null;
+    const pending = startCompile(gl, vertexSource, fragmentSource);
+    await nextFrame();
+    if (parallel) {
+      while (!gl.getProgramParameter(pending.program, parallel.COMPLETION_STATUS_KHR)) await nextFrame();
     }
-    this.program = program;
+    return new ShaderProgram(gl, finishCompile(gl, pending));
   }
 
   use(): this {
@@ -82,19 +87,50 @@ export class ShaderProgram {
   }
 }
 
-function compile(gl: WebGL2RenderingContext, type: GLenum, source: string): WebGLShader {
-  const shader = gl.createShader(type);
-  if (!shader) throw new Error('Could not create shader');
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(shader);
-    gl.deleteShader(shader);
-    const numbered = source
-      .split('\n')
-      .map((line, i) => `${String(i + 1).padStart(4)}  ${line}`)
-      .join('\n');
-    throw new Error(`Shader compile failed:\n${log}\n${numbered}`);
-  }
-  return shader;
+interface PendingProgram {
+  program: WebGLProgram;
+  shaders: [WebGLShader, string][];
 }
+
+/** Issues compile + link without querying status, which would force a synchronous wait. */
+function startCompile(gl: WebGL2RenderingContext, vertexSource: string, fragmentSource: string): PendingProgram {
+  const program = gl.createProgram();
+  const shaders: [WebGLShader, string][] = [
+    [gl.VERTEX_SHADER, vertexSource],
+    [gl.FRAGMENT_SHADER, fragmentSource],
+  ].map(([type, source]) => {
+    const shader = gl.createShader(type as GLenum);
+    if (!shader) throw new Error('Could not create shader');
+    gl.shaderSource(shader, source as string);
+    gl.compileShader(shader);
+    gl.attachShader(program, shader);
+    return [shader, source as string];
+  });
+  gl.linkProgram(program);
+  return { program, shaders };
+}
+
+function finishCompile(gl: WebGL2RenderingContext, { program, shaders }: PendingProgram): WebGLProgram {
+  try {
+    for (const [shader, source] of shaders) {
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const numbered = source
+          .split('\n')
+          .map((line, i) => `${String(i + 1).padStart(4)}  ${line}`)
+          .join('\n');
+        throw new Error(`Shader compile failed:\n${gl.getShaderInfoLog(shader)}\n${numbered}`);
+      }
+    }
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(`Program link failed: ${gl.getProgramInfoLog(program)}`);
+    }
+    return program;
+  } catch (error) {
+    gl.deleteProgram(program);
+    throw error;
+  } finally {
+    for (const [shader] of shaders) gl.deleteShader(shader);
+  }
+}
+
+const nextFrame = () => new Promise<void>((resolve) => setTimeout(resolve, 16));
