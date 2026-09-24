@@ -50,4 +50,21 @@ describe('urlState', () => {
   it('rejects a custom palette with fewer than two valid stops', () => {
     expect(decodeScene('?f=mandelbrot&p=custom&cs=ff0000')!.color.palette).toBe('gilt');
   });
+
+  it('round-trips a Julia scene, including c', () => {
+    const scene = defaultSnapshot('julia');
+    if (scene.fractal.kind !== 'julia') throw new Error('expected julia');
+    scene.fractal.params = { ...scene.fractal.params, cRe: -0.7436438870371587, cIm: 0.131825904205312 };
+    const decoded = decodeScene(encodeScene(scene))!;
+    expect(decoded.fractal.kind).toBe('julia');
+    if (decoded.fractal.kind !== 'julia') return;
+    expect(decoded.fractal.params.cRe).toBeCloseTo(-0.7436438870371587, 13);
+    expect(decoded.fractal.params.cIm).toBeCloseTo(0.131825904205312, 13);
+  });
+
+  it('clamps an out-of-range Julia constant and ignores unknown kinds', () => {
+    const decoded = decodeScene('?f=julia&cr=9&ci=-9')!;
+    expect(decoded.fractal).toMatchObject({ kind: 'julia', params: { cRe: 2, cIm: -2 } });
+    expect(decodeScene('?f=lsystem')).toBeNull();
+  });
 });

@@ -1,5 +1,7 @@
-import { MAX_ITERATIONS, MIN_ITERATIONS } from '../fractals/mandelbrot';
-import type { SceneSnapshot } from '../fractals/types';
+import { JULIA_C_LIMIT } from '../fractals/julia';
+import { MAX_ITERATIONS, MIN_ITERATIONS } from '../fractals/iterations';
+import { isFractalKind } from '../fractals/registry';
+import type { FractalState, SceneSnapshot } from '../fractals/types';
 import { defaultSnapshot } from '../store/defaults';
 import { isHexColor } from './color';
 import { isPaletteId } from './palettes';
@@ -9,6 +11,7 @@ import { MAX_ZOOM_LOG, MIN_ZOOM_LOG, clamp } from './viewMath';
  * Scene ⇄ query string. Short keys keep shared links readable:
  *
  *   ?f=mandelbrot&x=-0.7436438870371&y=0.1318259042&z=9.2&it=400&p=gilt
+ *   ?f=julia&cr=-0.8&ci=0.156&x=0&y=0&z=0&p=nacre
  *
  * Decoding is defensive: every field is validated and clamped, and anything
  * missing or malformed falls back to its default, so a hand-edited or
@@ -38,6 +41,10 @@ export function encodeScene({ fractal, view, color }: SceneSnapshot): string {
     e: color.edgeShading.toFixed(2),
     in: stripHash(color.interior),
   });
+  if (fractal.kind === 'julia') {
+    params.set('cr', trimNumber(fractal.params.cRe, 15));
+    params.set('ci', trimNumber(fractal.params.cIm, 15));
+  }
   if (color.palette === 'custom') params.set('cs', color.customStops.map(stripHash).join('-'));
   return params.toString();
 }
@@ -57,9 +64,10 @@ function readHex(params: URLSearchParams, key: string, fallback: string): string
 /** Returns null when the query string carries no scene at all. */
 export function decodeScene(search: string): SceneSnapshot | null {
   const params = new URLSearchParams(search);
-  if (params.get('f') !== 'mandelbrot') return null;
+  const kind = params.get('f') ?? '';
+  if (!isFractalKind(kind)) return null;
 
-  const base = defaultSnapshot();
+  const base = defaultSnapshot(kind);
   const palette = params.get('p') ?? '';
   const customStops = (params.get('cs') ?? '')
     .split('-')
@@ -68,16 +76,27 @@ export function decodeScene(search: string): SceneSnapshot | null {
     .slice(0, 6);
   const hasCustom = palette === 'custom' && customStops.length >= 2;
 
-  return {
-    fractal: {
-      kind: 'mandelbrot',
+  const iteration = {
+    maxIterations: Math.round(readNumber(params, 'it', base.fractal.params.maxIterations, MIN_ITERATIONS, MAX_ITERATIONS)),
+    autoIterations: params.get('ai') !== '0',
+  };
+  let fractal: FractalState;
+  if (base.fractal.kind === 'julia') {
+    const { cRe, cIm } = base.fractal.params;
+    fractal = {
+      kind: 'julia',
       params: {
-        maxIterations: Math.round(
-          readNumber(params, 'it', base.fractal.params.maxIterations, MIN_ITERATIONS, MAX_ITERATIONS),
-        ),
-        autoIterations: params.get('ai') !== '0',
+        ...iteration,
+        cRe: readNumber(params, 'cr', cRe, -JULIA_C_LIMIT, JULIA_C_LIMIT),
+        cIm: readNumber(params, 'ci', cIm, -JULIA_C_LIMIT, JULIA_C_LIMIT),
       },
-    },
+    };
+  } else {
+    fractal = { kind: 'mandelbrot', params: iteration };
+  }
+
+  return {
+    fractal,
     view: {
       centerX: readNumber(params, 'x', base.view.centerX, -4, 4),
       centerY: readNumber(params, 'y', base.view.centerY, -4, 4),

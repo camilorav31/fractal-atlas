@@ -1,7 +1,8 @@
 import { Trash2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useViewport } from '../../app/ViewportContext';
-import { CURATED_VIEWS } from '../../fractals/mandelbrot/curatedViews';
+import { CURATED } from '../../fractals/curated';
+import { FRACTALS } from '../../fractals/registry';
 import type { SceneSnapshot } from '../../fractals/types';
 import { useThumbnail } from '../../hooks/useThumbnail';
 import { usePresetStore } from '../../store/presetStore';
@@ -33,7 +34,7 @@ export function PresetsTab() {
               <li key={preset.id} className="group relative">
                 <PresetCard
                   name={preset.name}
-                  caption={`${formatMagnification(preset.snapshot.view.zoomLog)} · ${new Date(preset.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                  caption={`${FRACTALS[preset.snapshot.fractal.kind].title.split(' ')[0]} · ${formatMagnification(preset.snapshot.view.zoomLog)} · ${new Date(preset.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                   thumbnail={preset.thumbnail}
                   onSelect={() => load(preset.snapshot)}
                 />
@@ -93,13 +94,16 @@ function SaveForm() {
 }
 
 function CuratedSection({ onSelect }: { onSelect(snapshot: SceneSnapshot): void }) {
+  const kind = useSceneStore((s) => s.fractal.kind);
+  const views = CURATED[kind];
   const thumbnail = useThumbnail();
   const [thumbs, setThumbs] = useState(() => new Map(curatedThumbs));
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      for (const view of CURATED_VIEWS) {
+      for (const view of views) {
+        if (cancelled) return; // switched fractal mid-way; the new effect takes over
         if (curatedThumbs.has(view.id)) continue;
         try {
           curatedThumbs.set(view.id, await thumbnail(view.snapshot));
@@ -112,12 +116,12 @@ function CuratedSection({ onSelect }: { onSelect(snapshot: SceneSnapshot): void 
     return () => {
       cancelled = true;
     };
-  }, [thumbnail]);
+  }, [thumbnail, views]);
 
   return (
-    <Section title="Curated">
+    <Section title={`Curated · ${FRACTALS[kind].title.split(' ')[0]}`}>
       <ul className="grid grid-cols-2 gap-3">
-        {CURATED_VIEWS.map((view) => (
+        {views.map((view) => (
           <li key={view.id}>
             <PresetCard
               name={view.name}

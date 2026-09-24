@@ -29,6 +29,18 @@ export function screenToComplex(
   };
 }
 
+/** Inverse of `screenToComplex`: complex point → screen position (CSS px). */
+export function complexToScreen(
+  view: ComplexView,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): { sx: number; sy: number } {
+  const ps = pixelSize(view.zoomLog, height);
+  return { sx: (x - view.centerX) / ps + width / 2, sy: (view.centerY - y) / ps + height / 2 };
+}
+
 /**
  * Returns a view at `zoomLog` in which the complex point currently under the
  * screen position (sx, sy) stays under that same position.

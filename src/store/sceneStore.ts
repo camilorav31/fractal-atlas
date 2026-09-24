@@ -1,11 +1,22 @@
 import { create } from 'zustand';
-import type { ColorSettings, ComplexView, MandelbrotParams, SceneSnapshot } from '../fractals/types';
+import { withIteration } from '../fractals/registry';
+import type {
+  ColorSettings,
+  ComplexView,
+  FractalState,
+  IterationParams,
+  SceneSnapshot,
+} from '../fractals/types';
 import { decodeScene } from '../utils/urlState';
 import { defaultSnapshot } from './defaults';
 
 interface SceneActions {
   setView(view: ComplexView): void;
-  setMandelbrot(patch: Partial<MandelbrotParams>): void;
+  /** Replaces the fractal (kind + params). Framing the view is the caller's job. */
+  setFractal(fractal: FractalState): void;
+  setIteration(patch: Partial<IterationParams>): void;
+  /** Sets Julia's c. Ignored when another fractal is active. */
+  setJuliaConstant(cRe: number, cIm: number): void;
   setColor(patch: Partial<ColorSettings>): void;
   loadSnapshot(snapshot: SceneSnapshot): void;
 }
@@ -27,8 +38,12 @@ export const useSceneStore = create<SceneStore>()((set) => ({
 
   setView: (view) => set({ view }),
 
-  setMandelbrot: (patch) =>
-    set((s) => ({ fractal: { kind: 'mandelbrot', params: { ...s.fractal.params, ...patch } } })),
+  setFractal: (fractal) => set({ fractal }),
+
+  setIteration: (patch) => set((s) => ({ fractal: withIteration(s.fractal, patch) })),
+
+  setJuliaConstant: (cRe, cIm) =>
+    set((s) => (s.fractal.kind === 'julia' ? { fractal: { kind: 'julia', params: { ...s.fractal.params, cRe, cIm } } } : {})),
 
   setColor: (patch) => set((s) => ({ color: { ...s.color, ...patch } })),
 

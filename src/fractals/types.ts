@@ -14,14 +14,25 @@ export interface ComplexView {
   zoomLog: number;
 }
 
-export interface MandelbrotParams {
+/** Parameters shared by every escape-time fractal. */
+export interface IterationParams {
   /** Base iteration budget. */
   maxIterations: number;
   /** Scale the budget with zoom depth, since deep views need longer orbits. */
   autoIterations: boolean;
 }
 
-export type FractalState = { kind: 'mandelbrot'; params: MandelbrotParams };
+export type MandelbrotParams = IterationParams;
+
+export interface JuliaParams extends IterationParams {
+  /** The constant c in z ← z² + c. Each c defines a different Julia set. */
+  cRe: number;
+  cIm: number;
+}
+
+export type FractalState =
+  | { kind: 'mandelbrot'; params: MandelbrotParams }
+  | { kind: 'julia'; params: JuliaParams };
 
 export type FractalKind = FractalState['kind'];
 

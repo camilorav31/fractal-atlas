@@ -5,13 +5,15 @@ fragment shader, so zooming and panning stay fluid down to **10¹³× magnificat
 far past the point where 32-bit floats fall apart.
 
 - **Buttery navigation**: the zoom stays anchored to the cursor with exponential easing, the pan coasts with inertia, and pinch works on touch devices.
+- **Mandelbrot and Julia sets**, linked both ways: open the Julia set for any point of the Mandelbrot plane, or locate a Julia constant on the Mandelbrot set.
+- **Live Julia parameter**: drag *c* across a rendered Mandelbrot map, or let it orbit to animate the set.
 - **Deep zoom** using emulated double precision (df64) on the GPU, hardened against driver fast-math.
 - **Progressive rendering**: the image sharpens over successive frames with 24× supersampling once the view settles.
 - **Print-quality export**: tiled offscreen rendering up to 8K / 16k px, with a progress bar and cancel support.
 - **Shareable links**: the entire scene lives in the URL.
 - **Presets**: saved to `localStorage` with rendered thumbnails.
 
-> **Status**: Phase 1 (Mandelbrot) is complete. Julia, L-systems and IFS are next (see [Roadmap](#roadmap)).
+> **Status**: Phases 1–2 (Mandelbrot, Julia) are complete. L-systems and IFS are next (see [Roadmap](#roadmap)).
 
 ---
 
@@ -58,15 +60,21 @@ src/
 │   ├── panels/     ControlPanel, ParametersTab, PresetsTab, ExportDialog
 │   └── hud/        Placard, Readout, Hint, Toast
 ├── fractals/       Domain: typed params, a registry, one module per fractal
-│   └── mandelbrot/ defaults, iteration policy, curated views
+│   ├── mandelbrot/ Mandelbrot definition
+│   ├── julia/      Julia definition (binds the constant c)
+│   ├── iterations.ts  shared depth-scaled iteration policy
+│   └── curated.ts  curated views per fractal
 ├── gl/             Framework-free WebGL2 layer
 │   ├── FractalRenderer.ts   frame loop, accumulation, tiled export
 │   ├── ShaderProgram.ts     compile/link with line-numbered errors, cached uniforms
 │   ├── RenderTarget.ts      texture + FBO (RGBA16F with RGBA8 fallback)
 │   └── paletteTexture.ts    gradient → 256×1 sRGB texture
-├── shaders/        .vert / .frag / shared lib/*.glsl (imported via vite-plugin-glsl)
+├── shaders/        mandelbrot.frag, julia.frag, present.frag and a shared lib/:
+│                     df64.glsl (double-float maths), view.glsl (pixel → plane),
+│                     escape.glsl (the z ← z² + c loop), coloring.glsl
 ├── interaction/    PanZoomController: pointer, wheel, pinch, inertia, eased zoom
-├── hooks/          useUrlSync, useKeyboardShortcuts, useResetView, useThumbnail
+├── hooks/          useUrlSync, useKeyboardShortcuts, useResetView, useThumbnail,
+│                     useFractalNavigation (Mandelbrot ⇄ Julia), useJuliaOrbit
 ├── store/          Zustand stores: scene, presets (persisted), ui
 └── utils/          Pure, unit-tested maths: view transforms, colour, URL codec
 ```
@@ -95,7 +103,8 @@ A few decisions worth calling out:
 
 - **React renders the canvas exactly once.** The renderer subscribes to the store *outside* React, so panning at 120 Hz causes zero component re-renders. Panels subscribe with narrow selectors, so dragging the view never re-renders the colour controls.
 - **`SceneSnapshot` is the single serializable unit.** It drives the renderer, the URL, presets and exports. The same type flows through all four, and the compiler enforces that.
-- **Adding a fractal is additive.** Each one implements `EscapeTimeFractal<K>` (shader, defaults, iteration policy, optional uniforms). The registry is a mapped type over `FractalKind`, so forgetting to register a kind is a compile error.
+- **Adding a fractal is additive.** Each one implements `EscapeTimeFractal<K>` (shader, defaults, iteration policy, optional uniforms). The registry is a mapped type over `FractalKind`, so forgetting to register a kind is a compile error. `bindFractal()` pairs a state with its definition through an exhaustive `switch`, which lets the compiler correlate `kind` with `params` without a single cast. Julia was added this way; it needed no changes to the renderer beyond that.
+- **The shaders share one escape loop.** Mandelbrot and Julia iterate the same map and differ only in the starting point and in what the derivative is taken with respect to. `escape.glsl` implements the loop once, in both fp32 and df64, and each fragment shader is about 20 lines.
 - **The GL layer knows nothing about React**, and the interaction controller knows nothing about WebGL. Either could be reused on its own.
 
 ### The render pipeline
@@ -123,6 +132,7 @@ A few decisions worth calling out:
 | `u_scale`          | `float`     | Complex-plane units per pixel                              |
 | `u_maxIterations`  | `int`       | Iteration budget (auto-scaled with depth by default)       |
 | `u_useDf64`        | `bool`      | Selects the float32 or df64 path                           |
+| `u_c`              | `vec4`      | Julia only: the constant *c* as df64                       |
 | `u_zero`           | `uint`      | Always 0; defeats fast-math (see below)                    |
 | `u_palette`        | `sampler2D` | 256×1 cyclic gradient                                      |
 | `u_colorDensity`, `u_colorOffset`, `u_edgeShading`, `u_interiorColor` | | Colouring controls |
@@ -151,6 +161,38 @@ $$q(q + (x - \tfrac14)) \le \tfrac14 y^2, \quad q = (x-\tfrac14)^2 + y^2 \qquad\
 Points inside either region are painted immediately. The test is skipped on
 the df64 path, because a float32 check would misclassify points within ~10⁻⁷
 of the cardioid boundary, which is exactly where people zoom.
+
+### Julia sets
+
+Keep the same map and swap the roles: fix *c* and let the **starting point** vary,
+
+$$z_{n+1} = z_n^2 + c, \qquad z_0 = \text{pixel}.$$
+
+The filled Julia set *K_c* is every *z₀* whose orbit stays bounded, and its
+boundary *J_c* is the Julia set. Each *c* gives a different set. The Mandelbrot
+set is exactly the catalogue of which ones hold together:
+
+- **c ∈ M**: *J_c* is **connected**. Examples are the Douady rabbit (*c* ≈ −0.123 + 0.745i) and the San Marco basilica (*c* = −0.75).
+- **c ∉ M**: *J_c* is a **Cantor set**, totally disconnected "dust".
+- **c on ∂M**: *J_c* is at its most intricate. For example, *c* = *i* produces a dendrite with no interior at all.
+
+This is why the parameter picker is a map of the Mandelbrot set. Dragging *c*
+across the boundary shows the Julia set break into dust in real time. The
+**Orbit** toggle moves *c* around a small circle through its current value
+(radius 0.035, 14 s per revolution). The circle starts at *c* itself, so the
+animation begins without a jump.
+
+Near a parameter *c* on the boundary of M, the Mandelbrot set looks locally
+like the Julia set *J_c* (Tan Lei, 1990). You can see this with the two bridge
+buttons: *Julia set for c at centre* and *Locate c on the Mandelbrot set*.
+
+**Same loop, different derivative.** The distance estimate needs d*z*/d(pixel).
+For Mandelbrot the pixel is *c*, which gives *z′* ← 2*zz′* + 1 with *z′₀* = 0. For
+Julia the pixel is *z₀*, which gives *z′* ← 2*zz′* with *z′₀* = 1. `escape.glsl`
+takes that trailing +1 or +0 as a parameter, and nothing else changes. The
+fp32/df64 split, progressive rendering and export all work for Julia as they do
+for Mandelbrot. The df64 path was verified at 10⁸× on the rabbit's boundary,
+where float32 collapses a 256-pixel row to a single value.
 
 ### Smooth colouring
 
@@ -244,6 +286,7 @@ Every change is mirrored, debounced, into the query string with
 
 ```
 ?f=mandelbrot&x=-0.7436438870371587&y=0.131825904205312&z=11.000&it=400&ai=1&p=ember&d=0.600&o=0.000&e=0.60&in=050507
+?f=julia&cr=-0.123&ci=0.745&x=0&y=0&z=0&p=gilt
 ```
 
 Coordinates carry only as many digits as the current zoom needs. Decoding is
@@ -264,7 +307,7 @@ disappearing silently.
 ## Roadmap
 
 - [x] **Phase 1: Mandelbrot**: shader, df64, progressive AA, pan/zoom, palettes, export, presets, URL state
-- [ ] **Phase 2: Julia sets**: reuses `coloring.glsl` and `df64.glsl`; *c* becomes a uniform picked live from a Mandelbrot mini-map
+- [x] **Phase 2: Julia sets**: shared escape loop, *c* picked live on a Mandelbrot map, orbit animation, two-way Mandelbrot ⇄ Julia bridge
 - [ ] **Phase 3: L-systems**: string rewriting and turtle graphics, generated in a Web Worker and drawn to canvas/SVG
 - [ ] **Phase 4: IFS**: Barnsley fern via the chaos game, accumulated as a density histogram in a Worker
 - [ ] Perturbation theory for zooms beyond 10¹³×
@@ -283,3 +326,4 @@ Vite · WebGL2 / GLSL ES 3.00 · Tailwind CSS v4 · Zustand · Vitest · ESLint
 - B. Ottosson, *A perceptual color space for image processing* (OKLab), 2020
 - M. Roberts, *The Unreasonable Effectiveness of Quasirandom Sequences* (R2), 2018
 - H.-O. Peitgen, P. Richter, *The Beauty of Fractals*, 1986
+- Tan Lei, *Similarity between the Mandelbrot set and Julia sets*, Commun. Math. Phys. 134, 1990

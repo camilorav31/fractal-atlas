@@ -1,6 +1,6 @@
 import vertexShader from '../shaders/fullscreen.vert';
 import presentShader from '../shaders/present.frag';
-import { FRACTALS } from '../fractals/registry';
+import { FRACTALS, bindFractal } from '../fractals/registry';
 import type { SceneSnapshot } from '../fractals/types';
 import { hexToLinear } from '../utils/color';
 import { resolveStops } from '../utils/palettes';
@@ -251,12 +251,11 @@ export class FractalRenderer {
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     this.drawPresent(this.accumulation, tw, th, 0.22);
 
-    const def = FRACTALS[scene.fractal.kind];
     this.onStats({
       samples: this.samples,
       targetSamples: this.renderedScale === 1 ? SCREEN_SAMPLES : 1,
       precision: needsDoublePrecision(scene.view, th) ? 'df64' : 'fp32',
-      iterations: def.effectiveIterations(scene.fractal.params, scene.view.zoomLog),
+      iterations: bindFractal(scene.fractal).iterations(scene.view.zoomLog),
       resolutionScale: this.renderedScale,
     });
   }
@@ -274,7 +273,7 @@ export class FractalRenderer {
     r: { tw: number; th: number; imageW: number; imageH: number; tx: number; ty: number; sample: number },
   ): void {
     const { gl } = this;
-    const def = FRACTALS[scene.fractal.kind];
+    const fractal = bindFractal(scene.fractal);
     const program = this.programs.get(scene.fractal.kind)!;
     const { view, color } = scene;
     const [xHi, xLo] = splitDouble(view.centerX);
@@ -303,7 +302,7 @@ export class FractalRenderer {
       .vec2('u_jitter', jx, jy)
       .vec4('u_center', xHi, yHi, xLo, yLo)
       .float('u_scale', pixelSize(view.zoomLog, r.imageH))
-      .int('u_maxIterations', def.effectiveIterations(scene.fractal.params, view.zoomLog))
+      .int('u_maxIterations', fractal.iterations(view.zoomLog))
       .bool('u_useDf64', needsDoublePrecision(view, r.imageH))
       .uint('u_zero', 0) // see opaque() in df64.glsl
       .int('u_palette', 0)
@@ -312,7 +311,7 @@ export class FractalRenderer {
       .float('u_edgeShading', color.edgeShading)
       .vec3('u_interiorColor', hexToLinear(color.interior))
       .bool('u_linearOutput', target.format === 'rgba16f');
-    def.bindUniforms?.(program, scene.fractal.params);
+    fractal.bindUniforms(program);
 
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);

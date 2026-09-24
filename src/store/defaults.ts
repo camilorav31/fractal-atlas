@@ -1,5 +1,5 @@
-import { FRACTALS } from '../fractals/registry';
-import type { ColorSettings, SceneSnapshot } from '../fractals/types';
+import { FRACTALS, defaultFractalState } from '../fractals/registry';
+import type { ColorSettings, FractalKind, SceneSnapshot } from '../fractals/types';
 
 export const DEFAULT_COLOR: ColorSettings = {
   palette: 'gilt',
@@ -10,11 +10,10 @@ export const DEFAULT_COLOR: ColorSettings = {
   interior: '#050507',
 };
 
-export function defaultSnapshot(): SceneSnapshot {
-  const def = FRACTALS.mandelbrot;
+export function defaultSnapshot(kind: FractalKind = 'mandelbrot'): SceneSnapshot {
   return {
-    fractal: { kind: def.kind, params: { ...def.defaultParams } },
-    view: { ...def.defaultView },
+    fractal: defaultFractalState(kind),
+    view: { ...FRACTALS[kind].defaultView },
     color: { ...DEFAULT_COLOR, customStops: [...DEFAULT_COLOR.customStops] },
   };
 }

@@ -14,7 +14,10 @@ interface UiStore {
   exportOpen: boolean;
   stats: RenderStats | null;
   toast: Toast | null;
+  /** Julia's c is tracing a loop (see useJuliaOrbit). */
+  juliaOrbit: boolean;
   toggleInterface(): void;
+  setJuliaOrbit(active: boolean): void;
   setPanelTab(tab: PanelTab): void;
   setExportOpen(open: boolean): void;
   setStats(stats: RenderStats): void;
@@ -29,6 +32,8 @@ export const useUiStore = create<UiStore>()((set) => ({
   exportOpen: false,
   stats: null,
   toast: null,
+  juliaOrbit: false,
+  setJuliaOrbit: (juliaOrbit) => set({ juliaOrbit }),
   toggleInterface: () => set((s) => ({ interfaceHidden: !s.interfaceHidden })),
   setPanelTab: (panelTab) => set({ panelTab }),
   setExportOpen: (exportOpen) => set({ exportOpen }),
