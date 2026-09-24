@@ -23,8 +23,17 @@ export interface RenderStats {
 const SETTLE_MS = 110;
 /** Samples accumulated on screen once the view settles. */
 const SCREEN_SAMPLES = 24;
-/** Tile edge for offscreen renders. Small tiles keep each draw well under GPU watchdog limits. */
+/** Largest tile edge for offscreen renders. */
 const EXPORT_TILE = 1024;
+const MIN_EXPORT_TILE = 128;
+/**
+ * Work allowed in a single offscreen draw, in fp32 pixel-iterations. GPUs kill
+ * draws that run for more than a few seconds (the watchdog loses the context),
+ * so deep, iteration-heavy views are split into smaller tiles.
+ */
+const DRAW_WORK_BUDGET = 1024 * 1024 * 800;
+/** Rough cost of one df64 iteration relative to fp32 (a dozen ops per float op). */
+const DF64_COST = 12;
 const MIN_SCALE = 0.3;
 const MAX_DPR = 2;
 
@@ -173,7 +182,7 @@ export class FractalRenderer implements RenderEngine<EscapeScene> {
     const { gl } = this;
     await this.programFor(scene.fractal.kind);
     const tile = Math.min(
-      EXPORT_TILE,
+      exportTileFor(scene, height),
       gl.getParameter(gl.MAX_TEXTURE_SIZE) as number,
       ...(gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array),
     );
@@ -435,6 +444,14 @@ export class FractalRenderer implements RenderEngine<EscapeScene> {
     this.dirty = true;
     this.requestFrame();
   };
+}
+
+/** Tile edge that keeps one draw of `scene` within the per-draw work budget. */
+function exportTileFor(scene: EscapeScene, imageHeight: number): number {
+  const iterations = bindFractal(scene.fractal).iterations(scene.view.zoomLog);
+  const cost = iterations * (needsDoublePrecision(scene.view, imageHeight) ? DF64_COST : 1);
+  const edge = Math.sqrt(DRAW_WORK_BUDGET / cost);
+  return Math.max(MIN_EXPORT_TILE, Math.min(EXPORT_TILE, Math.floor(edge / 64) * 64));
 }
 
 /** R2 low-discrepancy sequence (Roberts, 2018), centred so sample 0 has no jitter. */
