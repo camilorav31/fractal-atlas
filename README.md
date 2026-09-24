@@ -5,6 +5,8 @@ sets are computed per pixel in GLSL and stay fluid down to **10¹³×** magnific
 L-systems and iterated function systems are built and rasterized in a **Web Worker**,
 so a million-segment plant or a twelve-million-point fern never blocks the UI.
 
+**[→ Open the live demo](https://fractal-atlas.vercel.app)**
+
 <p align="center">
   <a href="docs/showreel.mp4">
     <img src="docs/showreel.gif" alt="Fractal Atlas showreel: a montage of Mandelbrot, Julia, L-system and IFS renders, then a slow zoom into Seahorse Valley" width="100%">
@@ -46,6 +48,8 @@ npm run dev        # http://localhost:5173
 | `npm test`          | Unit tests (Vitest)                                       |
 | `npm run lint`      | ESLint (typescript-eslint + react-hooks)                  |
 | `npm run showreel`  | Re-render the README film (headless Chrome + ffmpeg)      |
+
+Deployed on **Vercel** as a static build (`vercel.json`: Vite preset, immutable caching for hashed assets).
 
 Requires a browser with **WebGL2** for Mandelbrot and Julia (every current desktop
 and mobile browser). L-systems and IFS need only a 2D canvas.

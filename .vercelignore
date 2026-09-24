@@ -1,0 +1,8 @@
+# Only the app sources are needed to build; keep uploads small.
+node_modules
+dist
+.showreel
+docs
+scripts
+tools
+.claude
