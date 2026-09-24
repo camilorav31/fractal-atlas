@@ -1,3 +1,4 @@
+import { renderIFS } from '../fractals/ifs/chaos';
 import { rasterize } from '../fractals/lsystem/rasterize';
 import { buildGeometry, type Geometry } from '../fractals/lsystem/turtle';
 import type { LSystemParams } from '../fractals/types';
@@ -5,9 +6,13 @@ import type { RasterRequest, RasterResponse } from '../render/rasterProtocol';
 import { resolveStops } from '../utils/palettes';
 
 /**
- * Off-main-thread L-system pipeline: grammar expansion → turtle geometry →
- * rasterization on an OffscreenCanvas → ImageBitmap transferred back.
- * The main thread never touches the (possibly million-segment) geometry.
+ * Off-main-thread raster pipeline, dispatched by fractal kind:
+ *
+ *   L-system  grammar expansion → turtle geometry (cached) → stroked Path2D batches
+ *   IFS       chaos game → density histogram → log tone map → ImageData
+ *
+ * Either way the result is drawn on an OffscreenCanvas and handed back as a
+ * transferred ImageBitmap; the main thread never touches the raw data.
  */
 
 /** Only these fields change the geometry; colour and stroke changes reuse it. */
@@ -48,19 +53,27 @@ scope.onmessage = (event: MessageEvent<RasterRequest>) => {
   const { id, scene, width, height } = event.data;
   try {
     const started = performance.now();
-    const { params } = scene.fractal;
-    const { geometry } = geometryFor(params);
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('OffscreenCanvas 2D is not available');
-    rasterize(ctx, geometry, scene.view, width, height, scene.color, resolveStops(scene.color), params);
+    const stops = resolveStops(scene.color);
+
+    let count: number;
+    let truncated = false;
+    if (scene.fractal.kind === 'lsystem') {
+      const { params } = scene.fractal;
+      const { geometry } = geometryFor(params);
+      rasterize(ctx, geometry, scene.view, width, height, scene.color, stops, params);
+      count = geometry.count;
+      truncated = geometry.truncated;
+    } else {
+      const frame = renderIFS(scene.fractal.params, scene.view, width, height, scene.color, stops);
+      ctx.putImageData(new ImageData(frame.pixels as Uint8ClampedArray<ArrayBuffer>, width, height), 0, 0);
+      count = frame.points;
+    }
+
     const bitmap = canvas.transferToImageBitmap();
-    const response: RasterResponse = {
-      id,
-      ok: true,
-      bitmap,
-      stats: { segments: geometry.count, truncated: geometry.truncated, ms: performance.now() - started },
-    };
+    const response: RasterResponse = { id, ok: true, bitmap, stats: { count, truncated, ms: performance.now() - started } };
     scope.postMessage(response, [bitmap]);
   } catch (error) {
     const response: RasterResponse = { id, ok: false, error: error instanceof Error ? error.message : String(error) };

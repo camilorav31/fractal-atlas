@@ -1,9 +1,11 @@
 import { JULIA_C_LIMIT } from '../fractals/julia';
 import { MAX_ITERATIONS, MIN_ITERATIONS } from '../fractals/iterations';
 import { MAX_LSYSTEM_ITERATIONS, maxIterationsWithinBudget, parseRules, validateAxiom } from '../fractals/lsystem/grammar';
+import { decodeMaps, encodeMaps } from '../fractals/ifs/maps';
+import { DEFAULT_IFS_RENDER, findIFSPreset } from '../fractals/ifs/presets';
 import { findPreset } from '../fractals/lsystem/presets';
 import { FRACTAL_INFO, isEscapeState, isFractalKind } from '../fractals/registry';
-import type { FractalState, LSystemParams, SceneSnapshot } from '../fractals/types';
+import type { FractalState, IFSParams, LSystemParams, SceneSnapshot } from '../fractals/types';
 import { defaultSnapshot } from '../store/defaults';
 import { isHexColor } from './color';
 import { isPaletteId } from './palettes';
@@ -14,6 +16,7 @@ import { MAX_ZOOM_LOG, MIN_ZOOM_LOG, clamp } from './viewMath';
  *
  *   ?f=mandelbrot&x=-0.7436438870371&y=0.1318259042&z=9.2&it=400&p=gilt
  *   ?f=julia&cr=-0.8&ci=0.156&x=0&y=0&z=0&p=nacre
+ *   ?f=ifs&is=fern&pt=3000000&ex=1.4&gm=2.2
  *   ?f=lsystem&ls=plant&ax=X&ru=X%3DF%2B[[X]-X]-F[-FX]%2BX%0AF%3DFF&an=25&n=6
  *
  * Decoding is defensive: every field is validated and clamped, and anything
@@ -62,6 +65,16 @@ export function encodeScene({ fractal, view, color }: SceneSnapshot): string {
     params.set('cb', l.colorBy);
     params.set('lw', l.lineWidth.toFixed(2));
     params.set('gl', l.glow.toFixed(2));
+  }
+  if (fractal.kind === 'ifs') {
+    const f = fractal.params;
+    params.set('is', f.preset);
+    // As with L-systems, a preset travels as its id; custom maps travel in full.
+    if (f.preset === 'custom') params.set('mp', encodeMaps(f.maps));
+    params.set('pt', String(f.points));
+    params.set('ex', f.exposure.toFixed(2));
+    params.set('gm', f.gamma.toFixed(2));
+    params.set('cb', f.colorBy);
   }
   params.set('p', color.palette);
   params.set('d', color.density.toFixed(3));
@@ -120,6 +133,7 @@ export function decodeScene(search: string): SceneSnapshot | null {
 
 function decodeFractal(params: URLSearchParams, base: FractalState): FractalState {
   if (base.kind === 'lsystem') return { kind: 'lsystem', params: decodeLSystem(params, base.params) };
+  if (base.kind === 'ifs') return { kind: 'ifs', params: decodeIFS(params, base.params) };
 
   const iteration = {
     maxIterations: Math.round(readNumber(params, 'it', base.params.maxIterations, MIN_ITERATIONS, MAX_ITERATIONS)),
@@ -164,5 +178,23 @@ function decodeLSystem(params: URLSearchParams, base: LSystemParams): LSystemPar
     colorBy: params.get('cb') === 'path' ? 'path' : params.get('cb') === 'depth' ? 'depth' : defaults.colorBy,
     lineWidth: readNumber(params, 'lw', defaults.lineWidth, 0.1, 12),
     glow: readNumber(params, 'gl', base.glow, 0, 1),
+  };
+}
+
+/** Upper bound on chaos-game samples a link may request (keeps frames under ~1 s). */
+const MAX_IFS_POINTS = 12_000_000;
+
+function decodeIFS(params: URLSearchParams, base: IFSParams): IFSParams {
+  const preset = findIFSPreset(params.get('is') ?? '');
+  const custom = params.get('is') === 'custom' ? decodeMaps(params.get('mp') ?? '') : null;
+  const maps = custom ?? (preset ?? { maps: base.maps }).maps.map((m) => ({ ...m }));
+  const cb = params.get('cb');
+  return {
+    preset: custom ? 'custom' : (preset?.id ?? base.preset),
+    maps,
+    points: Math.round(readNumber(params, 'pt', DEFAULT_IFS_RENDER.points, 100_000, MAX_IFS_POINTS)),
+    exposure: readNumber(params, 'ex', DEFAULT_IFS_RENDER.exposure, 0.1, 8),
+    gamma: readNumber(params, 'gm', DEFAULT_IFS_RENDER.gamma, 0.5, 6),
+    colorBy: cb === 'map' || cb === 'density' ? cb : (preset?.colorBy ?? base.colorBy),
   };
 }

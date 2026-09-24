@@ -9,8 +9,9 @@ export interface RasterRequest {
 }
 
 export interface RasterStats {
-  segments: number;
-  /** The segment budget cut the figure short. */
+  /** Segments drawn (L-systems) or points plotted (IFS). */
+  count: number;
+  /** A budget cut the figure short. */
   truncated: boolean;
   /** Worker time for this frame: geometry (if rebuilt) plus rasterization. */
   ms: number;

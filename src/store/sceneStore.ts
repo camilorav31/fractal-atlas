@@ -4,6 +4,7 @@ import type {
   ColorSettings,
   ComplexView,
   FractalState,
+  IFSParams,
   IterationParams,
   LSystemParams,
   SceneSnapshot,
@@ -20,6 +21,8 @@ interface SceneActions {
   setJuliaConstant(cRe: number, cIm: number): void;
   /** Patches L-system params. Ignored when another fractal is active. */
   setLSystem(patch: Partial<LSystemParams>): void;
+  /** Patches IFS params. Ignored when another fractal is active. */
+  setIFS(patch: Partial<IFSParams>): void;
   setColor(patch: Partial<ColorSettings>): void;
   loadSnapshot(snapshot: SceneSnapshot): void;
 }
@@ -50,6 +53,9 @@ export const useSceneStore = create<SceneStore>()((set) => ({
 
   setLSystem: (patch) =>
     set((s) => (s.fractal.kind === 'lsystem' ? { fractal: { kind: 'lsystem', params: { ...s.fractal.params, ...patch } } } : {})),
+
+  setIFS: (patch) =>
+    set((s) => (s.fractal.kind === 'ifs' ? { fractal: { kind: 'ifs', params: { ...s.fractal.params, ...patch } } } : {})),
 
   setColor: (patch) => set((s) => ({ color: { ...s.color, ...patch } })),
 

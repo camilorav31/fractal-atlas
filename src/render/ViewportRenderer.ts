@@ -93,12 +93,14 @@ export class ViewportRenderer {
     const token = ++this.generation;
     const kind = scene.fractal.kind;
     const family = FRACTAL_INFO[kind].family;
-    // Same live engine, kind already prepared once: the switch is instant, so skip the loading state.
-    const instant = family === this.family && this.warm.has(kind);
+    const familyChange = family !== this.family;
+    // Only the GPU can switch instantly: a warm kind's shader is already compiled.
+    // A raster kind always needs the worker to produce a fresh frame.
+    const instant = !familyChange && family === 'escape' && this.warm.has(kind);
     this.kind = kind;
     this.ready = false;
     this.callbacks.onStats(null);
-    if (!instant) this.callbacks.onSession({ phase: 'loading', kind, task: this.taskFor(kind, family) });
+    if (!instant) this.callbacks.onSession({ phase: 'loading', kind, task: this.taskFor(kind, family, familyChange) });
 
     try {
       if (family !== this.family) {
@@ -137,9 +139,10 @@ export class ViewportRenderer {
     else if (isRasterScene(scene)) this.engines.raster?.setScene(scene);
   }
 
-  private taskFor(kind: FractalKind, family: RenderFamily): string {
-    if (family === 'raster') return this.warm.has(kind) ? 'Redrawing' : 'Starting worker';
-    return this.warm.has(kind) ? 'Restoring buffers' : 'Compiling shaders';
+  private taskFor(kind: FractalKind, family: RenderFamily, familyChange: boolean): string {
+    if (family === 'escape') return this.warm.has(kind) ? 'Restoring buffers' : 'Compiling shaders';
+    if (familyChange) return 'Starting worker';
+    return kind === 'ifs' ? 'Sampling attractor' : 'Growing geometry';
   }
 
   // --- Engines (created on first use) -------------------------------------------

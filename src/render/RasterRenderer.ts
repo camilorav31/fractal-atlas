@@ -44,7 +44,7 @@ export class RasterRenderer implements RenderEngine<RasterScene> {
   private dirty = false;
   private nextId = 1;
   private readonly jobs = new Map<number, { resolve(bitmap: ImageBitmap): void; reject(error: Error): void }>();
-  private stats: RasterStats = { segments: 0, truncated: false, ms: 0 };
+  private stats: RasterStats = { count: 0, truncated: false, ms: 0 };
   private cssWidth = 1;
   private cssHeight = 1;
 

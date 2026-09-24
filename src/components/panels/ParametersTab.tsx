@@ -2,7 +2,7 @@ import { Crosshair, RotateCcw, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { MAX_ITERATIONS, MIN_ITERATIONS } from '../../fractals/iterations';
-import { FRACTAL_INFO, FRACTAL_KINDS, UPCOMING, bindFractal } from '../../fractals/registry';
+import { FRACTAL_INFO, FRACTAL_KINDS, bindFractal, isEscapeState } from '../../fractals/registry';
 import type { EscapeTimeState, FractalKind } from '../../fractals/types';
 import { useFractalNavigation } from '../../hooks/useFractalNavigation';
 import { useResetView } from '../../hooks/useResetView';
@@ -15,15 +15,13 @@ import { Section } from '../controls/Section';
 import { SegmentedControl, type SegmentOption } from '../controls/SegmentedControl';
 import { Slider } from '../controls/Slider';
 import { Toggle } from '../controls/Toggle';
+import { IFSSection } from './IFSSection';
 import { JuliaSection } from './JuliaSection';
 import { LSystemSection } from './LSystemSection';
 
-const SHORT_NAMES: Record<FractalKind, string> = { mandelbrot: 'Mandelbrot', julia: 'Julia', lsystem: 'L-system' };
+const SHORT_NAMES: Record<FractalKind, string> = { mandelbrot: 'Mandelbrot', julia: 'Julia', lsystem: 'L-system', ifs: 'IFS' };
 
-const FRACTAL_OPTIONS: SegmentOption<string>[] = [
-  ...FRACTAL_KINDS.map((kind) => ({ value: kind, label: SHORT_NAMES[kind] })),
-  ...UPCOMING.map((u) => ({ value: u.id, label: u.title, disabled: true, note: 'Soon' })),
-];
+const FRACTAL_OPTIONS: SegmentOption<FractalKind>[] = FRACTAL_KINDS.map((kind) => ({ value: kind, label: SHORT_NAMES[kind] }));
 
 const formatInt = (v: number) => Math.round(v).toLocaleString('en-US');
 
@@ -38,11 +36,13 @@ export function ParametersTab() {
           label="Fractal"
           options={FRACTAL_OPTIONS}
           value={fractal.kind}
-          onChange={(kind) => kind !== fractal.kind && switchTo(kind as FractalKind)}
+          onChange={(kind) => kind !== fractal.kind && switchTo(kind)}
         />
       </Section>
       {fractal.kind === 'julia' && <JuliaSection params={fractal.params} />}
-      {fractal.kind === 'lsystem' ? <LSystemSection params={fractal.params} /> : <IterationSection fractal={fractal} />}
+      {fractal.kind === 'lsystem' && <LSystemSection params={fractal.params} />}
+      {fractal.kind === 'ifs' && <IFSSection params={fractal.params} />}
+      {isEscapeState(fractal) && <IterationSection fractal={fractal} />}
       <ColorSection raster={FRACTAL_INFO[fractal.kind].family === 'raster'} />
       <ViewSection />
     </>
@@ -159,7 +159,7 @@ function ViewSection() {
     <Section title="View">
       <div className="space-y-2">
         <ViewAction onClick={resetView} aside={<kbd className="font-mono text-[10px] text-fg-subtle">R</kbd>}>
-          {kind === 'lsystem' ? 'Fit to view' : 'Reset to full set'}
+          {FRACTAL_INFO[kind].family === 'raster' ? 'Fit to view' : 'Reset to full set'}
         </ViewAction>
         {kind === 'mandelbrot' && (
           <ViewAction onClick={juliaAtCentre} aside={<Sparkles size={13} strokeWidth={1.6} />}>

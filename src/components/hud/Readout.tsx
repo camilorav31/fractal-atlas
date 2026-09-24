@@ -2,15 +2,18 @@ import type { ReactNode } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { useUiStore } from '../../store/uiStore';
 import type { ViewportStats } from '../../render/ViewportRenderer';
+import { FRACTAL_INFO } from '../../fractals/registry';
+import type { FractalKind } from '../../fractals/types';
 import { cx } from '../controls/cx';
 
 /** Instrument-style readout, bottom left. Digits are tabular so nothing jitters. */
 export function Readout() {
   const view = useSceneStore((s) => s.view);
-  const raster = useSceneStore((s) => s.fractal.kind === 'lsystem');
+  const raster = useSceneStore((s) => FRACTAL_INFO[s.fractal.kind].family === 'raster');
   const stats = useUiStore((s) => s.stats);
   const digits = raster ? 4 : Math.min(16, Math.max(6, Math.ceil(view.zoomLog) + 5));
-  const status = describe(stats);
+  const kind = useSceneStore((s) => s.fractal.kind);
+  const status = describe(stats, kind);
 
   return (
     <div className="hud-shadow pointer-events-none font-mono text-[11px] tabular select-none">
@@ -60,14 +63,14 @@ interface Status {
   label: string;
 }
 
-function describe(stats: ViewportStats | null): Status {
+function describe(stats: ViewportStats | null, kind: FractalKind): Status {
   if (!stats) {
     return { metricLabel: 'Iter', metric: '—', badge: '—', badgeTitle: '', highlight: false, progress: 0, busy: true, label: 'starting' };
   }
   if (stats.family === 'raster') {
     return {
-      metricLabel: 'Segs',
-      metric: `${stats.segments.toLocaleString('en-US')}${stats.truncated ? '+' : ''}`,
+      metricLabel: kind === 'ifs' ? 'Pts' : 'Segs',
+      metric: `${formatCount(stats.count)}${stats.truncated ? '+' : ''}`,
       badge: 'worker',
       badgeTitle: 'Geometry and rasterization run in a Web Worker',
       highlight: false,
@@ -97,6 +100,10 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
       <dd className="text-fg/90">{value}</dd>
     </>
   );
+}
+
+function formatCount(n: number): string {
+  return n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n.toLocaleString('en-US');
 }
 
 function formatSigned(value: number, digits: number): string {

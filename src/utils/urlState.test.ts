@@ -65,7 +65,7 @@ describe('urlState', () => {
   it('clamps an out-of-range Julia constant and ignores unknown kinds', () => {
     const decoded = decodeScene('?f=julia&cr=9&ci=-9')!;
     expect(decoded.fractal).toMatchObject({ kind: 'julia', params: { cRe: 2, cIm: -2 } });
-    expect(decodeScene('?f=ifs')).toBeNull();
+    expect(decodeScene('?f=nope')).toBeNull();
   });
 
   it('round-trips a preset L-system compactly and a custom one in full', () => {
@@ -87,5 +87,26 @@ describe('urlState', () => {
     const bomb = decodeScene('?f=lsystem&ls=custom&ax=F&ru=F%3DFFFFFFFF&n=16')!;
     if (bomb.fractal.kind !== 'lsystem') throw new Error('expected lsystem');
     expect(8 ** bomb.fractal.params.iterations).toBeLessThanOrEqual(1_200_000);
+  });
+
+  it('round-trips IFS presets by id and custom maps in full', () => {
+    const preset = defaultSnapshot('ifs');
+    const query = encodeScene(preset);
+    expect(new URLSearchParams(query).has('mp')).toBe(false);
+    expect(decodeScene(query)!.fractal).toEqual(preset.fractal);
+
+    const custom = defaultSnapshot('ifs');
+    if (custom.fractal.kind !== 'ifs') throw new Error('expected ifs');
+    custom.fractal.params = {
+      ...custom.fractal.params,
+      preset: 'custom',
+      maps: [{ a: 0.5, b: 0.1, c: -0.1, d: 0.5, e: 0.25, f: 0, p: 0.6 }, { a: 0.3, b: 0, c: 0, d: 0.3, e: -0.5, f: 0.5, p: 0.4 }],
+    };
+    expect(decodeScene(encodeScene(custom))!.fractal).toEqual(custom.fractal);
+  });
+
+  it('caps the chaos-game budget a link can request', () => {
+    const decoded = decodeScene('?f=ifs&is=fern&pt=999999999')!;
+    expect(decoded.fractal).toMatchObject({ params: { points: 12_000_000 } });
   });
 });

@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useViewport } from '../../app/ViewportContext';
+import { FRACTAL_INFO } from '../../fractals/registry';
 import { selectSnapshot, useSceneStore } from '../../store/sceneStore';
 import { useUiStore } from '../../store/uiStore';
 import { downloadCanvas, timestampedName } from '../../utils/download';
@@ -51,8 +52,8 @@ export function ExportDialog() {
   const [progress, setProgress] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // L-systems are vector strokes, antialiased by the canvas: supersampling doesn't apply.
-  const raster = useSceneStore((s) => s.fractal.kind === 'lsystem');
+  // Raster fractals are drawn by the worker at the target size: supersampling doesn't apply.
+  const raster = useSceneStore((s) => FRACTAL_INFO[s.fractal.kind].family === 'raster');
   const busy = progress !== null;
   const dims = viewport ? exportSize(size, viewport.renderer.viewportSize) : { width: 0, height: 0 };
   const samples = QUALITIES.find((q) => q.value === quality)!.samples;

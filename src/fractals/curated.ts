@@ -1,4 +1,5 @@
 import { DEFAULT_COLOR } from '../store/defaults';
+import { IFS_PRESETS, ifsParamsFromPreset } from './ifs/presets';
 import { LSYSTEM_PRESETS, paramsFromPreset } from './lsystem/presets';
 import type { FractalKind, SceneSnapshot } from './types';
 
@@ -88,8 +89,30 @@ const LSYSTEM_VIEWS: readonly CuratedView[] = LSYSTEM_PRESETS.map((preset) => ({
   },
 }));
 
+/** Palettes chosen per attractor: botanical greens and golds, cool light for the curves. */
+const IFS_LOOKS: Record<string, Partial<SceneSnapshot['color']>> = {
+  fern: { palette: 'aurora', density: 0.9 },
+  maple: { palette: 'ember', density: 1 },
+  tree: { palette: 'gilt', density: 1 },
+  sierpinski: { palette: 'nacre', density: 1 },
+  spiral: { palette: 'obsidian', density: 1.4 },
+  levy: { palette: 'aurora', density: 1.2 },
+  dragon: { palette: 'ember', density: 1.1 },
+};
+
+const IFS_VIEWS: readonly CuratedView[] = IFS_PRESETS.map((preset) => ({
+  id: `ifs-${preset.id}`,
+  name: preset.name,
+  snapshot: {
+    fractal: { kind: 'ifs', params: ifsParamsFromPreset(preset) },
+    view: { centerX: 0, centerY: 0, zoomLog: 0 },
+    color: { ...DEFAULT_COLOR, ...IFS_LOOKS[preset.id] },
+  },
+}));
+
 export const CURATED: { [K in FractalKind]: readonly CuratedView[] } = {
   mandelbrot: MANDELBROT_VIEWS,
   julia: JULIA_VIEWS,
   lsystem: LSYSTEM_VIEWS,
+  ifs: IFS_VIEWS,
 };

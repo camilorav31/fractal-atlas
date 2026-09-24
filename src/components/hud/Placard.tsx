@@ -11,6 +11,7 @@ export function Placard() {
     const { fractal } = s;
     if (fractal.kind === 'julia') return `c = ${formatComplex(fractal.params.cRe, fractal.params.cIm)}`;
     if (fractal.kind === 'lsystem') return grammarSummary(fractal.params.axiom, fractal.params.rules);
+    if (fractal.kind === 'ifs') return ifsSummary(fractal.params.maps.map((m) => m.p));
     return null;
   });
   const def = FRACTAL_INFO[kind];
@@ -32,7 +33,7 @@ export function Placard() {
       </h1>
       <p className="mt-2 max-w-[80vw] truncate font-mono text-[12px] text-fg/75">
         {kind === 'lsystem' ? detail : def.formula}
-        {kind === 'julia' && detail && (
+        {(kind === 'julia' || kind === 'ifs') && detail && (
           <>
             <span className="mx-2.5 text-fg/35">·</span>
             {detail}
@@ -41,6 +42,14 @@ export function Placard() {
       </p>
     </div>
   );
+}
+
+/** "4 affine maps · p = .01 .85 .07 .07" */
+function ifsSummary(probabilities: number[]): string {
+  const total = probabilities.reduce((a, b) => a + b, 0) || 1;
+  const ps = probabilities.map((p) => (p / total).toFixed(2).replace(/^0/, '')).join(' ');
+  const count = probabilities.length;
+  return `${count} affine map${count === 1 ? '' : 's'} · p = ${ps}`;
 }
 
 /** "ω = X · X → F+[[X]−X]−F[−FX]+X" — axiom plus the first rule, typographically. */

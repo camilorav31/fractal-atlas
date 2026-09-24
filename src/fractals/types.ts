@@ -74,8 +74,35 @@ export type EscapeTimeState =
   | { kind: 'mandelbrot'; params: MandelbrotParams }
   | { kind: 'julia'; params: JuliaParams };
 
-/** Fractals built as geometry on the CPU (in a Web Worker) and rasterized. */
-export type RasterState = { kind: 'lsystem'; params: LSystemParams };
+/** An affine contraction w(x, y) = (a·x + b·y + e, c·x + d·y + f), picked with probability p. */
+export interface AffineMap {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+  p: number;
+}
+
+export type IFSPresetId = 'fern' | 'maple' | 'tree' | 'sierpinski' | 'spiral' | 'levy' | 'dragon';
+
+/** An iterated function system and how its attractor is exposed. */
+export interface IFSParams {
+  preset: IFSPresetId | 'custom';
+  maps: AffineMap[];
+  /** Chaos-game samples per frame at zoom 0 (more when zoomed in). */
+  points: number;
+  /** Brightness multiplier on the log-density image. */
+  exposure: number;
+  /** Tone curve applied to log density; higher lifts faint regions. */
+  gamma: number;
+  /** Colour by which maps built each point, or by density. */
+  colorBy: 'map' | 'density';
+}
+
+/** Fractals built on the CPU (in a Web Worker) and rasterized to a 2D canvas. */
+export type RasterState = { kind: 'lsystem'; params: LSystemParams } | { kind: 'ifs'; params: IFSParams };
 
 export type FractalState = EscapeTimeState | RasterState;
 

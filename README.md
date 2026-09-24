@@ -3,12 +3,14 @@
 A real-time fractal explorer with two rendering engines. Escape-time fractals
 (Mandelbrot, Julia) are computed per pixel in a GLSL fragment shader, so zooming
 and panning stay fluid down to **10¹³× magnification**, far past the point where
-32-bit floats fall apart. L-systems are grown and rasterized in a **Web Worker**,
-so a million-segment plant never blocks the UI.
+32-bit floats fall apart. L-systems and iterated function systems are built and
+rasterized in a **Web Worker**, so a million-segment plant or a twelve-million-point
+fern never blocks the UI.
 
 - **Buttery navigation**: the zoom stays anchored to the cursor with exponential easing, the pan coasts with inertia, and pinch works on touch devices.
 - **Mandelbrot and Julia sets**, linked both ways: open the Julia set for any point of the Mandelbrot plane, or locate a Julia constant on the Mandelbrot set.
 - **Live Julia parameter**: drag *c* across a rendered Mandelbrot map, or let it orbit to animate the set.
+- **Iterated function systems**: the Barnsley fern and six other attractors, rendered as log-density images from millions of chaos-game samples, with an affine map editor that flags non-contractive maps.
 - **L-systems with a live grammar editor**: eight classic systems (plants, Koch, dragon, Hilbert…), or write your own rules. Seeded organic variance, branch taper and glow, and a *Grow* replay from the axiom.
 - **Deep zoom** using emulated double precision (df64) on the GPU, hardened against driver fast-math.
 - **Progressive rendering**: the image sharpens over successive frames with 24× supersampling once the view settles.
@@ -16,7 +18,7 @@ so a million-segment plant never blocks the UI.
 - **Shareable links**: the entire scene lives in the URL.
 - **Presets**: saved to `localStorage` with rendered thumbnails.
 
-> **Status**: Phases 1–3 (Mandelbrot, Julia, L-systems) are complete. IFS is next (see [Roadmap](#roadmap)).
+> **Status**: All four phases (Mandelbrot, Julia, L-systems, IFS) are complete (see [Roadmap](#roadmap)).
 
 ---
 
@@ -66,11 +68,12 @@ src/
 │   ├── mandelbrot/ Mandelbrot definition
 │   ├── julia/      Julia definition (binds the constant c)
 │   ├── lsystem/    grammar (parse, validate, size estimate), turtle, rasterizer, presets
+│   ├── ifs/        affine maps (contraction, balancing, URL codec), chaos game + tone map, presets
 │   ├── iterations.ts  shared depth-scaled iteration policy
 │   └── curated.ts  curated views per fractal
 ├── render/         ViewportRenderer (session manager), engine.ts (lifecycle contract),
 │                     RasterRenderer (worker client)
-├── workers/        raster.worker.ts: grammar → geometry → OffscreenCanvas → ImageBitmap
+├── workers/        raster.worker.ts: L-system or IFS → OffscreenCanvas → ImageBitmap
 ├── gl/             Framework-free WebGL2 layer
 │   ├── FractalRenderer.ts   frame loop, accumulation, tiled export
 │   ├── ShaderProgram.ts     compile/link with line-numbered errors, cached uniforms
@@ -124,7 +127,7 @@ and every engine implements the same lifecycle:
 | | Created | Released on `suspend` | Kept (cheap to hold, costly to rebuild) |
 |---|---|---|---|
 | **WebGL** (Mandelbrot, Julia) | first escape-time view | drawing buffer, RGBA16F accumulation buffer (~30 MB on Retina) | context, compiled programs (a few KB each) |
-| **Worker** (L-systems) | first L-system view | worker thread, geometry cache (up to ~50 MB), canvas backing store | nothing |
+| **Worker** (L-systems, IFS) | first raster view | worker thread, geometry cache (up to ~50 MB), canvas backing store | nothing |
 
 - **Lazy.** Open an L-system first and no WebGL context is ever created. Stay on Mandelbrot and no worker is spawned.
 - **Non-blocking compilation.** Shaders compile with `KHR_parallel_shader_compile` where available, polled off the main thread, and are cached per kind. As a result, Mandelbrot ⇄ Julia is instant after first use.
@@ -148,7 +151,7 @@ Measured on an M1 in Chrome: a cold Julia compile takes 44 ms, a cold worker sta
 4. **Colour is handled in linear light.** Palettes are uploaded as `SRGB8_ALPHA8`, so sampling returns linear values. Averaging happens in a half-float buffer, and the conversion back to sRGB happens once at present time, together with triangular-PDF dither that removes banding.
 5. **Export** reuses the same passes on 1024² offscreen tiles. Each tile carries a `u_tileOffset` into the full image, so the tiles join seamlessly. Between draws the renderer waits on a GPU fence (`fenceSync` + non-blocking `clientWaitSync`), which keeps the UI responsive and lets you cancel an 8K render.
 
-### The raster pipeline (L-systems)
+### The raster pipeline (L-systems, IFS)
 
 ```
  main thread                              worker
@@ -164,6 +167,7 @@ Measured on an M1 in Chrome: a cold Julia compile takes 44 ms, a cold worker sta
 - **Instant preview.** A large figure can take a few hundred milliseconds to redraw. Meanwhile the main thread redraws the last bitmap with the affine transform from its view to the current one, so pan and zoom track the pointer at display rate.
 - **Coalescing.** At most one screen frame is in flight. Changes made while the worker is busy collapse into a single request for the latest state.
 - **Caching.** Geometry is cached by the parameters that shape it. Changing colour, width or glow only re-rasterizes.
+- **IFS frames hold no geometry.** Each frame replays the chaos game into a reused histogram with a fixed seed. Nothing is kept between frames, and a pan redraws identical grain instead of shimmering.
 - **Batching.** One `stroke()` per segment would be far too slow. Segments are bucketed by quantized colour and width into `Path2D` objects, about 500 draw calls regardless of segment count, and off-screen segments are culled.
 
 ### Shader interface
@@ -262,6 +266,24 @@ rewriting and are never drawn.
 - **Stochastic variation.** *Organic variance* perturbs each turn (±50% of δ) and each step (±30%) using a seeded Mulberry32 PRNG. Each seed grows a different, perfectly reproducible plant, and the seed travels in the URL.
 - **Branch-aware styling.** The turtle records bracket depth per segment. Width thins geometrically with depth (*taper*), and colour can follow either the drawing order or the branch depth. Palette colours are lifted to a minimum OKLab lightness so the dark ends of a palette stay visible against the background.
 
+### Iterated function systems
+
+An IFS is a finite set of affine maps wᵢ(**x**) = Aᵢ**x** + **b**ᵢ. When every map
+is a **contraction** (it shrinks distances), Hutchinson's theorem (1981) guarantees
+a unique non-empty compact set that is the union of its own images:
+
+$$A = \bigcup_i w_i(A).$$
+
+That set is the **attractor**. The Barnsley fern is one: four maps, one for the
+stem and three that place smaller copies of the whole fern, as successive
+leaflets and as the two lowest fronds.
+
+- **The chaos game.** Start anywhere, repeatedly apply a map chosen with probability pᵢ, and the orbit converges onto the attractor within a few steps. Plotting the orbit (after 24 warm-up steps) samples the attractor. The probabilities don't change its *shape*, only how densely each part is visited. *Balance* sets pᵢ ∝ |det Aᵢ|, each map's area scale, which spreads points evenly.
+- **Contraction check.** A map's Lipschitz constant is the largest singular value of Aᵢ, σ₁ = √(½(‖A‖²_F + √(‖A‖⁴_F − 4 det²A))). The editor shows σ for every map and flags σ ≥ 1, where the attractor may not exist. Points that diverge are restarted, so a bad edit degrades gracefully instead of freezing the tab.
+- **Log-density tone mapping.** Hits accumulate in a histogram. Brightness is (log(1+n) / log(1+n_max))^(1/γ) × exposure, as in fractal flames (Draves, 1992). A linear mapping would blow out the dense core and hide the filaments; the log maps densities over six orders of magnitude onto something the eye can read.
+- **Colour by history.** Each map carries a colour coordinate, and the point's colour moves halfway toward it at every step (c ← (c + cᵢ)/2). A region therefore inherits the hue of the maps that built it, which is why each leaflet of the fern takes on its own tone. The alternative is colouring by density.
+- **Framing.** The attractor is measured from 60k samples using 0.1%/99.9% quantiles (not min/max) and fitted to the view. Zooming in multiplies the sample count, up to 10×, to keep the grain fine.
+
 ### Smooth colouring
 
 Colouring by the integer escape count *n* produces visible bands. The
@@ -356,6 +378,7 @@ Every change is mirrored, debounced, into the query string with
 ?f=mandelbrot&x=-0.7436438870371587&y=0.131825904205312&z=11.000&it=400&ai=1&p=ember&d=0.600&o=0.000&e=0.60&in=050507
 ?f=julia&cr=-0.123&ci=0.745&x=0&y=0&z=0&p=gilt
 ?f=lsystem&ls=plant&n=7&an=25&jt=0.15&sd=7&cb=depth&p=aurora
+?f=ifs&is=fern&pt=3000000&ex=1.40&gm=2.20&cb=map&p=aurora
 ```
 
 Preset L-systems travel as an id. A custom grammar travels in full and must
@@ -382,7 +405,7 @@ disappearing silently.
 - [x] **Phase 1: Mandelbrot**: shader, df64, progressive AA, pan/zoom, palettes, export, presets, URL state
 - [x] **Phase 2: Julia sets**: shared escape loop, *c* picked live on a Mandelbrot map, orbit animation, two-way Mandelbrot ⇄ Julia bridge
 - [x] **Phase 3: L-systems**: grammar editor, turtle graphics and rasterization in a Web Worker, instant reprojected preview, seeded variance, *Grow* replay
-- [ ] **Phase 4: IFS**: Barnsley fern via the chaos game, accumulated as a density histogram in a Worker
+- [x] **Phase 4: IFS**: chaos game into a log-density histogram in the worker, affine map editor with contraction check, mutate and balance
 - [ ] Perturbation theory for zooms beyond 10¹³×
 - [ ] Animated fly-to between presets
 
@@ -402,3 +425,6 @@ Vite · WebGL2 / GLSL ES 3.00 · Tailwind CSS v4 · Zustand · Vitest · ESLint
 - Tan Lei, *Similarity between the Mandelbrot set and Julia sets*, Commun. Math. Phys. 134, 1990
 - A. Lindenmayer, *Mathematical models for cellular interactions in development*, J. Theor. Biol. 18, 1968
 - P. Prusinkiewicz, A. Lindenmayer, *The Algorithmic Beauty of Plants*, Springer, 1990
+- J. E. Hutchinson, *Fractals and self-similarity*, Indiana Univ. Math. J. 30, 1981
+- M. F. Barnsley, *Fractals Everywhere*, Academic Press, 1988
+- S. Draves, E. Reckase, *The Fractal Flame Algorithm*, 2008

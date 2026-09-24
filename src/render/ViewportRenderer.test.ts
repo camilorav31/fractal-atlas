@@ -116,4 +116,17 @@ describe('ViewportRenderer session', () => {
     expect(sessions.slice(before - 1).every((s) => s.phase !== 'loading')).toBe(true);
     expect(log.filter((l) => l === 'gpu.suspend')).toHaveLength(0); // never torn down within the family
   });
+
+  it('always shows loading for raster kinds, which need a fresh worker frame', async () => {
+    const { viewport, raster, sessions } = setup();
+    viewport.setScene(defaultSnapshot('lsystem'));
+    raster.finishPrepare();
+    await flush();
+    viewport.setScene(defaultSnapshot('ifs'));
+    expect(sessions.at(-1)).toMatchObject({ phase: 'loading', kind: 'ifs', task: 'Sampling attractor' });
+    raster.finishPrepare();
+    await flush();
+    viewport.setScene(defaultSnapshot('lsystem')); // warm, same family — still needs a frame
+    expect(sessions.at(-1)).toMatchObject({ phase: 'loading', kind: 'lsystem', task: 'Growing geometry' });
+  });
 });

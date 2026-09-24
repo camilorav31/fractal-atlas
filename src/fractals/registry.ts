@@ -1,4 +1,5 @@
 import type { BoundFractal, EscapeParamsOf, EscapeTimeFractal, FractalInfo } from './definition';
+import { ifs, ifsDefaults } from './ifs';
 import { julia } from './julia';
 import { lsystem, lsystemDefaults } from './lsystem';
 import { mandelbrot } from './mandelbrot';
@@ -24,6 +25,7 @@ export const FRACTAL_INFO: { [K in FractalKind]: FractalInfo<K> } = {
   mandelbrot,
   julia,
   lsystem,
+  ifs,
 };
 
 export const FRACTAL_KINDS = Object.keys(FRACTAL_INFO) as FractalKind[];
@@ -43,9 +45,6 @@ export function isEscapeScene(scene: SceneSnapshot): scene is EscapeScene {
 export function isRasterScene(scene: SceneSnapshot): scene is RasterScene {
   return !isEscapeState(scene.fractal);
 }
-
-/** Kinds announced in the UI but not implemented yet. */
-export const UPCOMING = [{ id: 'ifs', title: 'IFS' }] as const;
 
 function bind<K extends EscapeKind>(definition: EscapeTimeFractal<K>, params: EscapeParamsOf<K>): BoundFractal {
   return {
@@ -78,6 +77,8 @@ export function defaultFractalState(kind: FractalKind, iteration?: IterationPara
       return { kind, params: { ...FRACTALS.julia.defaultParams, ...iteration } };
     case 'lsystem':
       return { kind, params: { ...lsystemDefaults } };
+    case 'ifs':
+      return { kind, params: { ...ifsDefaults, maps: ifsDefaults.maps.map((m) => ({ ...m })) } };
   }
 }
 
@@ -89,6 +90,7 @@ export function withIteration(state: FractalState, patch: Partial<IterationParam
     case 'julia':
       return { kind: state.kind, params: { ...state.params, ...patch } };
     case 'lsystem':
+    case 'ifs':
       return state;
   }
 }
