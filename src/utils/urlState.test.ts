@@ -42,7 +42,7 @@ describe('urlState', () => {
     expect(decoded.view.centerX).toBe(defaults.view.centerX);
     expect(decoded.view.centerY).toBe(4);
     expect(decoded.view.zoomLog).toBe(13);
-    expect(decoded.fractal.params.maxIterations).toBe(32);
+    expect(decoded.fractal).toMatchObject({ params: { maxIterations: 32 } });
     expect(decoded.color.palette).toBe(defaults.color.palette);
     expect(decoded.color.interior).toBe(defaults.color.interior);
   });
@@ -65,6 +65,27 @@ describe('urlState', () => {
   it('clamps an out-of-range Julia constant and ignores unknown kinds', () => {
     const decoded = decodeScene('?f=julia&cr=9&ci=-9')!;
     expect(decoded.fractal).toMatchObject({ kind: 'julia', params: { cRe: 2, cIm: -2 } });
-    expect(decodeScene('?f=lsystem')).toBeNull();
+    expect(decodeScene('?f=ifs')).toBeNull();
+  });
+
+  it('round-trips a preset L-system compactly and a custom one in full', () => {
+    const preset = defaultSnapshot('lsystem');
+    const presetQuery = encodeScene(preset);
+    expect(new URLSearchParams(presetQuery).has('ru')).toBe(false);
+    expect(decodeScene(presetQuery)!.fractal).toEqual(preset.fractal);
+
+    const custom = defaultSnapshot('lsystem');
+    if (custom.fractal.kind !== 'lsystem') throw new Error('expected lsystem');
+    custom.fractal.params = { ...custom.fractal.params, preset: 'custom', axiom: 'F+F', rules: 'F=F-F++F-F', iterations: 3 };
+    expect(decodeScene(encodeScene(custom))!.fractal).toEqual(custom.fractal);
+  });
+
+  it('rejects an unparseable custom grammar and clamps runaway iterations', () => {
+    const decoded = decodeScene('?f=lsystem&ls=custom&ax=F&ru=F%3D%3F%3F&n=16')!;
+    if (decoded.fractal.kind !== 'lsystem') throw new Error('expected lsystem');
+    expect(decoded.fractal.params.rules).not.toContain('?');
+    const bomb = decodeScene('?f=lsystem&ls=custom&ax=F&ru=F%3DFFFFFFFF&n=16')!;
+    if (bomb.fractal.kind !== 'lsystem') throw new Error('expected lsystem');
+    expect(8 ** bomb.fractal.params.iterations).toBeLessThanOrEqual(1_200_000);
   });
 });

@@ -1,20 +1,22 @@
+import type { ReactNode } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
 import { useUiStore } from '../../store/uiStore';
+import type { ViewportStats } from '../../render/ViewportRenderer';
 import { cx } from '../controls/cx';
 
-/** Instrument-style coordinates, bottom left. Digits are tabular so nothing jitters. */
+/** Instrument-style readout, bottom left. Digits are tabular so nothing jitters. */
 export function Readout() {
   const view = useSceneStore((s) => s.view);
+  const raster = useSceneStore((s) => s.fractal.kind === 'lsystem');
   const stats = useUiStore((s) => s.stats);
-  const digits = Math.min(16, Math.max(6, Math.ceil(view.zoomLog) + 5));
-  const refining = stats ? stats.samples < stats.targetSamples || stats.resolutionScale < 1 : true;
-  const progress = stats ? (stats.resolutionScale < 1 ? 0 : stats.samples / stats.targetSamples) : 0;
+  const digits = raster ? 4 : Math.min(16, Math.max(6, Math.ceil(view.zoomLog) + 5));
+  const status = describe(stats);
 
   return (
     <div className="hud-shadow pointer-events-none font-mono text-[11px] tabular select-none">
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-        <Row label="Re" value={formatSigned(view.centerX, digits)} />
-        <Row label="Im" value={formatSigned(view.centerY, digits)} />
+        <Row label={raster ? 'X' : 'Re'} value={formatSigned(view.centerX, digits)} />
+        <Row label={raster ? 'Y' : 'Im'} value={formatSigned(view.centerY, digits)} />
         <Row
           label="Zoom"
           value={
@@ -23,31 +25,72 @@ export function Readout() {
             </>
           }
         />
-        <Row label="Iter" value={stats ? stats.iterations.toLocaleString('en-US') : '—'} />
+        <Row label={status.metricLabel} value={status.metric} />
       </dl>
       <div className="mt-3 flex items-center gap-2.5">
         <span
           className={cx(
             'rounded-[4px] border px-1.5 py-px text-[9.5px] tracking-[0.12em] uppercase transition-colors duration-500',
-            stats?.precision === 'df64' ? 'border-gilt/40 text-gilt' : 'border-fg/25 text-fg-muted',
+            status.highlight ? 'border-gilt/40 text-gilt' : 'border-fg/25 text-fg-muted',
           )}
-          title={stats?.precision === 'df64' ? 'Emulated double precision' : 'Single precision'}
+          title={status.badgeTitle}
         >
-          {stats?.precision ?? 'fp32'}
+          {status.badge}
         </span>
         <span className="relative h-px w-16 overflow-hidden bg-line-strong">
           <span
-            className="absolute inset-y-0 left-0 bg-fg/60 transition-[width] duration-200"
-            style={{ width: `${progress * 100}%` }}
+            className={cx('absolute inset-y-0 left-0 bg-fg/60 transition-[width] duration-200', status.busy && 'animate-pulse')}
+            style={{ width: `${status.progress * 100}%` }}
           />
         </span>
-        <span className="w-16 text-[10px] text-fg-muted">{refining ? 'refining' : `${stats?.samples ?? 0} spp`}</span>
+        <span className="w-20 text-[10px] text-fg-muted">{status.label}</span>
       </div>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+interface Status {
+  metricLabel: string;
+  metric: string;
+  badge: string;
+  badgeTitle: string;
+  highlight: boolean;
+  progress: number;
+  busy: boolean;
+  label: string;
+}
+
+function describe(stats: ViewportStats | null): Status {
+  if (!stats) {
+    return { metricLabel: 'Iter', metric: '—', badge: '—', badgeTitle: '', highlight: false, progress: 0, busy: true, label: 'starting' };
+  }
+  if (stats.family === 'raster') {
+    return {
+      metricLabel: 'Segs',
+      metric: `${stats.segments.toLocaleString('en-US')}${stats.truncated ? '+' : ''}`,
+      badge: 'worker',
+      badgeTitle: 'Geometry and rasterization run in a Web Worker',
+      highlight: false,
+      progress: stats.rendering ? 0.5 : 1,
+      busy: stats.rendering,
+      label: stats.rendering ? 'drawing' : `${Math.round(stats.ms)} ms`,
+    };
+  }
+  const interactive = stats.resolutionScale < 1;
+  const refining = stats.samples < stats.targetSamples || interactive;
+  return {
+    metricLabel: 'Iter',
+    metric: stats.iterations.toLocaleString('en-US'),
+    badge: stats.precision,
+    badgeTitle: stats.precision === 'df64' ? 'Emulated double precision' : 'Single precision',
+    highlight: stats.precision === 'df64',
+    progress: interactive ? 0 : stats.samples / stats.targetSamples,
+    busy: false,
+    label: refining ? 'refining' : `${stats.samples} spp`,
+  };
+}
+
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <>
       <dt className="text-fg-muted">{label}</dt>

@@ -2,8 +2,8 @@ import { Crosshair, RotateCcw, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { MAX_ITERATIONS, MIN_ITERATIONS } from '../../fractals/iterations';
-import { FRACTAL_KINDS, FRACTALS, UPCOMING, bindFractal } from '../../fractals/registry';
-import type { FractalKind } from '../../fractals/types';
+import { FRACTAL_INFO, FRACTAL_KINDS, UPCOMING, bindFractal } from '../../fractals/registry';
+import type { EscapeTimeState, FractalKind } from '../../fractals/types';
 import { useFractalNavigation } from '../../hooks/useFractalNavigation';
 import { useResetView } from '../../hooks/useResetView';
 import { DEFAULT_COLOR } from '../../store/defaults';
@@ -16,9 +16,12 @@ import { SegmentedControl, type SegmentOption } from '../controls/SegmentedContr
 import { Slider } from '../controls/Slider';
 import { Toggle } from '../controls/Toggle';
 import { JuliaSection } from './JuliaSection';
+import { LSystemSection } from './LSystemSection';
+
+const SHORT_NAMES: Record<FractalKind, string> = { mandelbrot: 'Mandelbrot', julia: 'Julia', lsystem: 'L-system' };
 
 const FRACTAL_OPTIONS: SegmentOption<string>[] = [
-  ...FRACTAL_KINDS.map((kind) => ({ value: kind, label: FRACTALS[kind].title.split(' ')[0]! })),
+  ...FRACTAL_KINDS.map((kind) => ({ value: kind, label: SHORT_NAMES[kind] })),
   ...UPCOMING.map((u) => ({ value: u.id, label: u.title, disabled: true, note: 'Soon' })),
 ];
 
@@ -39,15 +42,14 @@ export function ParametersTab() {
         />
       </Section>
       {fractal.kind === 'julia' && <JuliaSection params={fractal.params} />}
-      <IterationSection />
-      <ColorSection />
+      {fractal.kind === 'lsystem' ? <LSystemSection params={fractal.params} /> : <IterationSection fractal={fractal} />}
+      <ColorSection raster={FRACTAL_INFO[fractal.kind].family === 'raster'} />
       <ViewSection />
     </>
   );
 }
 
-function IterationSection() {
-  const fractal = useSceneStore((s) => s.fractal);
+function IterationSection({ fractal }: { fractal: EscapeTimeState }) {
   const zoomLog = useSceneStore((s) => s.view.zoomLog);
   const setIteration = useSceneStore((s) => s.setIteration);
   const { params } = fractal;
@@ -76,7 +78,8 @@ function IterationSection() {
   );
 }
 
-function ColorSection() {
+/** `raster`: L-systems have a background instead of an interior, and no distance-estimate edges. */
+function ColorSection({ raster }: { raster: boolean }) {
   const color = useSceneStore(useShallow((s) => s.color));
   const setColor = useSceneStore((s) => s.setColor);
 
@@ -123,18 +126,24 @@ function ColorSection() {
           format={(v) => `${Math.round(v * 360)}°`}
           onChange={(offset) => setColor({ offset })}
         />
-        <Slider
-          label="Edge definition"
-          value={color.edgeShading}
-          min={0}
-          max={1}
-          defaultValue={DEFAULT_COLOR.edgeShading}
-          format={(v) => `${Math.round(v * 100)}%`}
-          onChange={(edgeShading) => setColor({ edgeShading })}
-        />
+        {!raster && (
+          <Slider
+            label="Edge definition"
+            value={color.edgeShading}
+            min={0}
+            max={1}
+            defaultValue={DEFAULT_COLOR.edgeShading}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(edgeShading) => setColor({ edgeShading })}
+          />
+        )}
         <div className="flex items-center justify-between py-1.5">
-          <span className="text-[12px] text-fg-muted">Interior</span>
-          <ColorPicker label="Interior colour" value={color.interior} onChange={(interior) => setColor({ interior })} />
+          <span className="text-[12px] text-fg-muted">{raster ? 'Background' : 'Interior'}</span>
+          <ColorPicker
+            label={raster ? 'Background colour' : 'Interior colour'}
+            value={color.interior}
+            onChange={(interior) => setColor({ interior })}
+          />
         </div>
       </Section>
     </>
@@ -150,13 +159,14 @@ function ViewSection() {
     <Section title="View">
       <div className="space-y-2">
         <ViewAction onClick={resetView} aside={<kbd className="font-mono text-[10px] text-fg-subtle">R</kbd>}>
-          Reset to full set
+          {kind === 'lsystem' ? 'Fit to view' : 'Reset to full set'}
         </ViewAction>
-        {kind === 'mandelbrot' ? (
+        {kind === 'mandelbrot' && (
           <ViewAction onClick={juliaAtCentre} aside={<Sparkles size={13} strokeWidth={1.6} />}>
             Julia set for c at centre
           </ViewAction>
-        ) : (
+        )}
+        {kind === 'julia' && (
           <ViewAction onClick={locateOnMandelbrot} aside={<Crosshair size={13} strokeWidth={1.6} />}>
             Locate c on the Mandelbrot set
           </ViewAction>

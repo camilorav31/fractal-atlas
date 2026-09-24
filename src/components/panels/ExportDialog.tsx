@@ -51,6 +51,8 @@ export function ExportDialog() {
   const [progress, setProgress] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // L-systems are vector strokes, antialiased by the canvas: supersampling doesn't apply.
+  const raster = useSceneStore((s) => s.fractal.kind === 'lsystem');
   const busy = progress !== null;
   const dims = viewport ? exportSize(size, viewport.renderer.viewportSize) : { width: 0, height: 0 };
   const samples = QUALITIES.find((q) => q.value === quality)!.samples;
@@ -123,15 +125,17 @@ export function ExportDialog() {
             <p className="mb-2 text-[12px] text-fg-muted">Size</p>
             <SegmentedControl<SizeId> label="Size" options={SIZES} value={size} onChange={setSize} size="sm" />
           </div>
-          <div>
-            <p className="mb-2 text-[12px] text-fg-muted">Quality</p>
-            <SegmentedControl<QualityId> label="Quality" options={QUALITIES} value={quality} onChange={setQuality} size="sm" />
-          </div>
+          {!raster && (
+            <div>
+              <p className="mb-2 text-[12px] text-fg-muted">Quality</p>
+              <SegmentedControl<QualityId> label="Quality" options={QUALITIES} value={quality} onChange={setQuality} size="sm" />
+            </div>
+          )}
           <dl className="grid grid-cols-3 rounded-[12px] border border-line bg-black/20 font-mono text-[11px] tabular">
             {[
               ['Pixels', `${dims.width}×${dims.height}`],
               ['Megapixels', megapixels.toFixed(1)],
-              ['Samples/px', String(samples)],
+              raster ? ['Renderer', 'Worker'] : ['Samples/px', String(samples)],
             ].map(([k, v]) => (
               <div key={k} className="border-l border-line px-3 py-2.5 first:border-l-0">
                 <dt className="text-[9.5px] tracking-[0.14em] text-fg-subtle uppercase">{k}</dt>

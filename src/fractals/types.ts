@@ -6,7 +6,10 @@
  * `kind`, so a Julia control can never be handed Mandelbrot parameters.
  */
 
-/** A viewport on the complex plane. Coordinates are float64 on the CPU. */
+/**
+ * A viewport on the plane: the complex plane for escape-time fractals, the
+ * turtle's drawing plane for L-systems. Coordinates are float64 on the CPU.
+ */
 export interface ComplexView {
   centerX: number;
   centerY: number;
@@ -30,9 +33,53 @@ export interface JuliaParams extends IterationParams {
   cIm: number;
 }
 
-export type FractalState =
+export type LSystemPresetId =
+  | 'plant'
+  | 'tree'
+  | 'bush'
+  | 'koch'
+  | 'snowflake'
+  | 'dragon'
+  | 'sierpinski'
+  | 'hilbert';
+
+/** A Lindenmayer system plus the turtle and stroke settings that draw it. */
+export interface LSystemParams {
+  /** The preset these values came from, or 'custom' once the grammar is edited. */
+  preset: LSystemPresetId | 'custom';
+  axiom: string;
+  /** Production rules, one per line, e.g. "F=FF+[+F-F-F]-[-F+F+F]". */
+  rules: string;
+  /** Turn angle for + and −, in degrees. */
+  angle: number;
+  /** Initial turtle heading in degrees (90 = up). */
+  heading: number;
+  /** Rewriting steps applied to the axiom. */
+  iterations: number;
+  /** How much strokes thin with each branch level, in [0, 1]. */
+  taper: number;
+  /** Seeded random variation of angles and lengths, in [0, 1]. */
+  jitter: number;
+  seed: number;
+  /** Colour along the drawing order, or by branch depth. */
+  colorBy: 'path' | 'depth';
+  /** Stroke width in px per 1000 px of image height. */
+  lineWidth: number;
+  /** Additive halo around strokes, in [0, 1]. */
+  glow: number;
+}
+
+/** Fractals computed per pixel in a fragment shader. */
+export type EscapeTimeState =
   | { kind: 'mandelbrot'; params: MandelbrotParams }
   | { kind: 'julia'; params: JuliaParams };
+
+/** Fractals built as geometry on the CPU (in a Web Worker) and rasterized. */
+export type RasterState = { kind: 'lsystem'; params: LSystemParams };
+
+export type FractalState = EscapeTimeState | RasterState;
+
+export type EscapeKind = EscapeTimeState['kind'];
 
 export type FractalKind = FractalState['kind'];
 
@@ -53,8 +100,11 @@ export interface ColorSettings {
 }
 
 /** Everything needed to reproduce an image. Serialized to URLs and presets. */
-export interface SceneSnapshot {
-  fractal: FractalState;
+export interface SceneSnapshot<F extends FractalState = FractalState> {
+  fractal: F;
   view: ComplexView;
   color: ColorSettings;
 }
+
+export type EscapeScene = SceneSnapshot<EscapeTimeState>;
+export type RasterScene = SceneSnapshot<RasterState>;

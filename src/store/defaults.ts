@@ -1,4 +1,4 @@
-import { FRACTALS, defaultFractalState } from '../fractals/registry';
+import { FRACTAL_INFO, defaultFractalState } from '../fractals/registry';
 import type { ColorSettings, FractalKind, SceneSnapshot } from '../fractals/types';
 
 export const DEFAULT_COLOR: ColorSettings = {
@@ -13,7 +13,7 @@ export const DEFAULT_COLOR: ColorSettings = {
 export function defaultSnapshot(kind: FractalKind = 'mandelbrot'): SceneSnapshot {
   return {
     fractal: defaultFractalState(kind),
-    view: { ...FRACTALS[kind].defaultView },
+    view: { ...FRACTAL_INFO[kind].defaultView },
     color: { ...DEFAULT_COLOR, customStops: [...DEFAULT_COLOR.customStops] },
   };
 }

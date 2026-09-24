@@ -2,7 +2,7 @@ import { Trash2 } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useViewport } from '../../app/ViewportContext';
 import { CURATED } from '../../fractals/curated';
-import { FRACTALS } from '../../fractals/registry';
+import { FRACTAL_INFO } from '../../fractals/registry';
 import type { SceneSnapshot } from '../../fractals/types';
 import { useThumbnail } from '../../hooks/useThumbnail';
 import { usePresetStore } from '../../store/presetStore';
@@ -34,7 +34,7 @@ export function PresetsTab() {
               <li key={preset.id} className="group relative">
                 <PresetCard
                   name={preset.name}
-                  caption={`${FRACTALS[preset.snapshot.fractal.kind].title.split(' ')[0]} · ${formatMagnification(preset.snapshot.view.zoomLog)} · ${new Date(preset.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                  caption={`${FRACTAL_INFO[preset.snapshot.fractal.kind].title.split(' ')[0]} · ${formatMagnification(preset.snapshot.view.zoomLog)} · ${new Date(preset.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
                   thumbnail={preset.thumbnail}
                   onSelect={() => load(preset.snapshot)}
                 />
@@ -119,7 +119,7 @@ function CuratedSection({ onSelect }: { onSelect(snapshot: SceneSnapshot): void 
   }, [thumbnail, views]);
 
   return (
-    <Section title={`Curated · ${FRACTALS[kind].title.split(' ')[0]}`}>
+    <Section title={`Curated · ${FRACTAL_INFO[kind].title.split(' ')[0]}`}>
       <ul className="grid grid-cols-2 gap-3">
         {views.map((view) => (
           <li key={view.id}>

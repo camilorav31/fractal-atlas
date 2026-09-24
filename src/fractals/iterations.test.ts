@@ -28,12 +28,18 @@ describe('registry', () => {
 
   it('patches iteration settings without touching kind-specific params', () => {
     const patched = withIteration(defaultFractalState('julia'), { maxIterations: 64 });
-    expect(patched.kind === 'julia' && patched.params.cIm).toBe(0.156);
+    if (patched.kind !== 'julia') throw new Error('expected julia');
+    expect(patched.params.cIm).toBe(0.156);
     expect(patched.params.maxIterations).toBe(64);
+    const lsystem = defaultFractalState('lsystem');
+    expect(withIteration(lsystem, { maxIterations: 64 })).toBe(lsystem);
   });
 
   it('binds definitions to their own parameters', () => {
-    expect(bindFractal(defaultFractalState('julia')).definition.kind).toBe('julia');
-    expect(bindFractal(defaultFractalState('mandelbrot')).iterations(0)).toBe(400);
+    const julia = defaultFractalState('julia');
+    const mandelbrot = defaultFractalState('mandelbrot');
+    if (julia.kind !== 'julia' || mandelbrot.kind !== 'mandelbrot') throw new Error('unexpected kind');
+    expect(bindFractal(julia).definition.kind).toBe('julia');
+    expect(bindFractal(mandelbrot).iterations(0)).toBe(400);
   });
 });

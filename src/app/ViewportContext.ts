@@ -1,10 +1,10 @@
 import { createContext, useContext } from 'react';
-import type { FractalRenderer } from '../gl/FractalRenderer';
+import type { ViewportRenderer } from '../render/ViewportRenderer';
 import type { PanZoomController } from '../interaction/PanZoomController';
 
 /** Imperative handles created by the canvas, exposed to panels and shortcuts. */
 export interface Viewport {
-  renderer: FractalRenderer;
+  renderer: ViewportRenderer;
   controller: PanZoomController;
 }
 

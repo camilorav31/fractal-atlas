@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useViewport } from '../app/ViewportContext';
-import { FRACTALS } from '../fractals/registry';
+import { FRACTAL_INFO } from '../fractals/registry';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
 import { frameInSafeArea, type Insets } from '../utils/viewMath';
@@ -26,6 +26,6 @@ export function useResetView() {
     const kind = useSceneStore.getState().fractal.kind;
     const { width, height } = viewport?.renderer.viewportSize ?? { width: innerWidth, height: innerHeight };
     viewport?.controller.stop();
-    useSceneStore.getState().setView(frameInSafeArea(FRACTALS[kind].defaultView, width, height, panelInsets()));
+    useSceneStore.getState().setView(frameInSafeArea(FRACTAL_INFO[kind].defaultView, width, height, panelInsets()));
   }, [viewport]);
 }

@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { defaultFractalState } from '../fractals/registry';
+import { defaultFractalState, isEscapeState } from '../fractals/registry';
 import type { FractalKind } from '../fractals/types';
 import { useSceneStore } from '../store/sceneStore';
 import { useUiStore } from '../store/uiStore';
@@ -19,8 +19,11 @@ export function useFractalNavigation() {
   const switchTo = useCallback(
     (kind: FractalKind, juliaConstant?: { cRe: number; cIm: number }) => {
       const scene = useSceneStore.getState();
-      const { maxIterations, autoIterations } = scene.fractal.params;
-      let next = defaultFractalState(kind, { maxIterations, autoIterations });
+      // Carry the iteration budget between escape-time fractals.
+      const iteration = isEscapeState(scene.fractal)
+        ? { maxIterations: scene.fractal.params.maxIterations, autoIterations: scene.fractal.params.autoIterations }
+        : undefined;
+      let next = defaultFractalState(kind, iteration);
       if (next.kind === 'julia' && juliaConstant) next = { kind: 'julia', params: { ...next.params, ...juliaConstant } };
       useUiStore.getState().setJuliaOrbit(false);
       scene.setFractal(next);

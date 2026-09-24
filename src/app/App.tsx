@@ -9,6 +9,7 @@ import { Toast } from '../components/hud/Toast';
 import { ControlPanel } from '../components/panels/ControlPanel';
 import { ExportDialog } from '../components/panels/ExportDialog';
 import { useJuliaOrbit } from '../hooks/useJuliaOrbit';
+import { useLSystemGrow } from '../hooks/useLSystemGrow';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useResetView } from '../hooks/useResetView';
 import { useUrlSync } from '../hooks/useUrlSync';
@@ -32,6 +33,7 @@ function Atlas({ onReady, viewport }: { onReady(v: Viewport | null): void; viewp
 
   useUrlSync();
   useJuliaOrbit();
+  useLSystemGrow();
   useKeyboardShortcuts(viewport, resetView);
 
   // First visit (no shared link): frame the whole set beside the panel.

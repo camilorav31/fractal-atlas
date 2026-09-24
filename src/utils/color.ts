@@ -54,6 +54,17 @@ function oklabToLinearRgb([L, a, b]: Rgb): Rgb {
 export const hexToOklab = (hex: string): Rgb => linearRgbToOklab(hexToRgb(hex).map(srgbToLinear) as Rgb);
 
 /**
+ * Raises a colour's perceptual lightness (OKLab L) to at least `minL`,
+ * keeping its hue and chroma. Used for strokes on a dark background, where
+ * the near-black ends of a palette would otherwise vanish.
+ */
+export function liftLightness(rgb: Rgb, minL: number): Rgb {
+  const [L, a, b] = linearRgbToOklab(rgb.map(srgbToLinear) as Rgb);
+  if (L >= minL) return rgb;
+  return oklabToLinearRgb([minL, a, b]).map((c) => linearToSrgb(Math.min(1, Math.max(0, c)))) as Rgb;
+}
+
+/**
  * Rasterizes evenly spaced, *cyclic* colour stops into `size` RGBA8 texels
  * (sRGB-encoded). The last stop blends back into the first, so the texture
  * tiles seamlessly under REPEAT wrapping.

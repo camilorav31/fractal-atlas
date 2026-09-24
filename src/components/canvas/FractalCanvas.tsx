@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Viewport } from '../../app/ViewportContext';
-import { FractalRenderer } from '../../gl/FractalRenderer';
+import { FRACTAL_INFO } from '../../fractals/registry';
 import { PanZoomController } from '../../interaction/PanZoomController';
+import { ViewportRenderer } from '../../render/ViewportRenderer';
 import { selectSnapshot, useSceneStore } from '../../store/sceneStore';
 import { useUiStore } from '../../store/uiStore';
 
@@ -10,29 +11,33 @@ interface FractalCanvasProps {
 }
 
 /**
- * Mounts the WebGL canvas. React renders it once; from then on the renderer
- * is driven by a store subscription outside React, so panning at 120 Hz never
- * causes a component re-render.
+ * Mounts the two stacked canvases (WebGL for escape-time fractals, 2D for
+ * L-systems) and the pointer surface above them. React renders this once;
+ * from then on the renderer is driven by a store subscription outside
+ * React, so panning at 120 Hz never causes a component re-render.
  */
 export function FractalCanvas({ onReady }: FractalCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const glRef = useRef<HTMLCanvasElement>(null);
+  const rasterRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current!;
-    let renderer: FractalRenderer;
+    const surface = surfaceRef.current!;
+    let renderer: ViewportRenderer;
     try {
-      renderer = new FractalRenderer(canvas, (stats) => useUiStore.getState().setStats(stats));
+      renderer = new ViewportRenderer(glRef.current!, rasterRef.current!, (stats) => useUiStore.getState().setStats(stats));
     } catch (e) {
       console.error(e);
       queueMicrotask(() => setError(e instanceof Error ? e.message : String(e)));
       return;
     }
 
-    const controller = new PanZoomController(canvas, {
+    const controller = new PanZoomController(surface, {
       getView: () => useSceneStore.getState().view,
       setView: (view) => useSceneStore.getState().setView(view),
       getSize: () => renderer.viewportSize,
+      getMaxZoomLog: () => FRACTAL_INFO[useSceneStore.getState().fractal.kind].maxZoomLog,
     });
 
     const observer = new ResizeObserver(([entry]) => {
@@ -40,9 +45,9 @@ export function FractalCanvas({ onReady }: FractalCanvasProps) {
       const { width, height } = entry.contentRect;
       renderer.resize(width, height, window.devicePixelRatio);
     });
-    observer.observe(canvas);
+    observer.observe(surface);
     // Size synchronously too: consumers of onReady may frame the view immediately.
-    renderer.resize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio);
+    renderer.resize(surface.clientWidth, surface.clientHeight, window.devicePixelRatio);
 
     renderer.setScene(selectSnapshot(useSceneStore.getState()));
     const unsubscribe = useSceneStore.subscribe((state) => renderer.setScene(selectSnapshot(state)));
@@ -59,11 +64,14 @@ export function FractalCanvas({ onReady }: FractalCanvasProps) {
 
   return (
     <>
-      <canvas
-        ref={canvasRef}
+      <div
+        ref={surfaceRef}
         aria-label="Fractal viewport. Scroll to zoom, drag to pan, double-click to dive."
-        className="fixed inset-0 block size-full cursor-crosshair touch-none select-none data-[dragging]:cursor-grabbing"
-      />
+        className="fixed inset-0 cursor-crosshair touch-none select-none data-[dragging]:cursor-grabbing"
+      >
+        <canvas ref={glRef} className="pointer-events-none absolute inset-0 block size-full" />
+        <canvas ref={rasterRef} className="pointer-events-none invisible absolute inset-0 block size-full" />
+      </div>
       {error && (
         <div className="fixed inset-0 flex items-center justify-center p-8 text-center">
           <div className="max-w-sm">

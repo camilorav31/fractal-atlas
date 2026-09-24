@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { RenderStats } from '../gl/FractalRenderer';
+import type { ViewportStats } from '../render/ViewportRenderer';
 
 export type PanelTab = 'parameters' | 'presets';
 
@@ -12,15 +12,18 @@ interface UiStore {
   interfaceHidden: boolean;
   panelTab: PanelTab;
   exportOpen: boolean;
-  stats: RenderStats | null;
+  stats: ViewportStats | null;
   toast: Toast | null;
   /** Julia's c is tracing a loop (see useJuliaOrbit). */
   juliaOrbit: boolean;
+  /** An L-system is replaying its iterations from the axiom (see useLSystemGrow). */
+  lsystemGrowing: boolean;
   toggleInterface(): void;
+  setLSystemGrowing(active: boolean): void;
   setJuliaOrbit(active: boolean): void;
   setPanelTab(tab: PanelTab): void;
   setExportOpen(open: boolean): void;
-  setStats(stats: RenderStats): void;
+  setStats(stats: ViewportStats): void;
   notify(message: string): void;
 }
 
@@ -33,6 +36,8 @@ export const useUiStore = create<UiStore>()((set) => ({
   stats: null,
   toast: null,
   juliaOrbit: false,
+  lsystemGrowing: false,
+  setLSystemGrowing: (lsystemGrowing) => set({ lsystemGrowing }),
   setJuliaOrbit: (juliaOrbit) => set({ juliaOrbit }),
   toggleInterface: () => set((s) => ({ interfaceHidden: !s.interfaceHidden })),
   setPanelTab: (panelTab) => set({ panelTab }),

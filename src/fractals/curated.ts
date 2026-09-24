@@ -1,4 +1,5 @@
 import { DEFAULT_COLOR } from '../store/defaults';
+import { LSYSTEM_PRESETS, paramsFromPreset } from './lsystem/presets';
 import type { FractalKind, SceneSnapshot } from './types';
 
 export interface CuratedView {
@@ -65,7 +66,30 @@ const JULIA_VIEWS: readonly CuratedView[] = [
   },
 ];
 
+/** Palette for each classic L-system: warm growth for plants, cool light for curves. */
+const LSYSTEM_LOOKS: Record<string, Partial<SceneSnapshot['color']>> = {
+  plant: { palette: 'aurora', density: 0.9 },
+  tree: { palette: 'gilt', density: 0.8 },
+  bush: { palette: 'ember', density: 0.9 },
+  koch: { palette: 'nacre', density: 1 },
+  snowflake: { palette: 'obsidian', density: 1 },
+  dragon: { palette: 'ember', density: 1.5 },
+  sierpinski: { palette: 'gilt', density: 1.2 },
+  hilbert: { palette: 'aurora', density: 1.3 },
+};
+
+const LSYSTEM_VIEWS: readonly CuratedView[] = LSYSTEM_PRESETS.map((preset) => ({
+  id: `lsystem-${preset.id}`,
+  name: preset.name,
+  snapshot: {
+    fractal: { kind: 'lsystem', params: paramsFromPreset(preset) },
+    view: { centerX: 0, centerY: 0, zoomLog: 0 },
+    color: { ...DEFAULT_COLOR, ...LSYSTEM_LOOKS[preset.id] },
+  },
+}));
+
 export const CURATED: { [K in FractalKind]: readonly CuratedView[] } = {
   mandelbrot: MANDELBROT_VIEWS,
   julia: JULIA_VIEWS,
+  lsystem: LSYSTEM_VIEWS,
 };

@@ -1,7 +1,7 @@
 import vertexShader from '../shaders/fullscreen.vert';
 import presentShader from '../shaders/present.frag';
 import { FRACTALS, bindFractal } from '../fractals/registry';
-import type { SceneSnapshot } from '../fractals/types';
+import type { EscapeScene } from '../fractals/types';
 import { hexToLinear } from '../utils/color';
 import { resolveStops } from '../utils/palettes';
 import { needsDoublePrecision, pixelSize, splitDouble } from '../utils/viewMath';
@@ -34,7 +34,7 @@ const MIN_SCALE = 0.3;
 const MAX_DPR = 2;
 
 /**
- * Owns the WebGL2 context and turns a `SceneSnapshot` into pixels.
+ * Owns the WebGL2 context and turns an escape-time scene into pixels.
  *
  * Rendering is *on demand*: nothing is drawn while the scene is static and
  * fully refined. The pipeline has two passes:
@@ -56,7 +56,7 @@ export class FractalRenderer {
   private accumulation!: RenderTarget;
   private palette!: PaletteTexture;
 
-  private scene: SceneSnapshot | null = null;
+  private scene: EscapeScene | null = null;
   private cssWidth = 1;
   private cssHeight = 1;
   private dpr = 1;
@@ -94,7 +94,7 @@ export class FractalRenderer {
 
   // --- Public API -----------------------------------------------------------
 
-  setScene(scene: SceneSnapshot): void {
+  setScene(scene: EscapeScene): void {
     this.scene = scene;
     this.dirty = true;
     this.lastChange = performance.now();
@@ -122,7 +122,7 @@ export class FractalRenderer {
    * returns it on a 2D canvas. Yields to the event loop between GPU draws,
    * so the UI stays responsive (and cancellable) during multi-second exports.
    */
-  renderImage(scene: SceneSnapshot, width: number, height: number, options: ExportOptions): Promise<HTMLCanvasElement> {
+  renderImage(scene: EscapeScene, width: number, height: number, options: ExportOptions): Promise<HTMLCanvasElement> {
     // Offscreen jobs share GL state, so they run strictly one after another.
     const job = this.offscreenQueue.then(() => this.renderImageNow(scene, width, height, options));
     this.offscreenQueue = job.catch(() => undefined);
@@ -130,7 +130,7 @@ export class FractalRenderer {
   }
 
   private async renderImageNow(
-    scene: SceneSnapshot,
+    scene: EscapeScene,
     width: number,
     height: number,
     { samples, onProgress, signal }: ExportOptions,
@@ -269,7 +269,7 @@ export class FractalRenderer {
    */
   private drawSample(
     target: RenderTarget,
-    scene: SceneSnapshot,
+    scene: EscapeScene,
     r: { tw: number; th: number; imageW: number; imageH: number; tx: number; ty: number; sample: number },
   ): void {
     const { gl } = this;

@@ -1,19 +1,22 @@
 # Fractal Atlas
 
-A real-time, GPU-rendered fractal explorer. Every pixel is computed in a GLSL
-fragment shader, so zooming and panning stay fluid down to **10¹³× magnification**,
-far past the point where 32-bit floats fall apart.
+A real-time fractal explorer with two rendering engines. Escape-time fractals
+(Mandelbrot, Julia) are computed per pixel in a GLSL fragment shader, so zooming
+and panning stay fluid down to **10¹³× magnification**, far past the point where
+32-bit floats fall apart. L-systems are grown and rasterized in a **Web Worker**,
+so a million-segment plant never blocks the UI.
 
 - **Buttery navigation**: the zoom stays anchored to the cursor with exponential easing, the pan coasts with inertia, and pinch works on touch devices.
 - **Mandelbrot and Julia sets**, linked both ways: open the Julia set for any point of the Mandelbrot plane, or locate a Julia constant on the Mandelbrot set.
 - **Live Julia parameter**: drag *c* across a rendered Mandelbrot map, or let it orbit to animate the set.
+- **L-systems with a live grammar editor**: eight classic systems (plants, Koch, dragon, Hilbert…), or write your own rules. Seeded organic variance, branch taper and glow, and a *Grow* replay from the axiom.
 - **Deep zoom** using emulated double precision (df64) on the GPU, hardened against driver fast-math.
 - **Progressive rendering**: the image sharpens over successive frames with 24× supersampling once the view settles.
 - **Print-quality export**: tiled offscreen rendering up to 8K / 16k px, with a progress bar and cancel support.
 - **Shareable links**: the entire scene lives in the URL.
 - **Presets**: saved to `localStorage` with rendered thumbnails.
 
-> **Status**: Phases 1–2 (Mandelbrot, Julia) are complete. L-systems and IFS are next (see [Roadmap](#roadmap)).
+> **Status**: Phases 1–3 (Mandelbrot, Julia, L-systems) are complete. IFS is next (see [Roadmap](#roadmap)).
 
 ---
 
@@ -62,8 +65,11 @@ src/
 ├── fractals/       Domain: typed params, a registry, one module per fractal
 │   ├── mandelbrot/ Mandelbrot definition
 │   ├── julia/      Julia definition (binds the constant c)
+│   ├── lsystem/    grammar (parse, validate, size estimate), turtle, rasterizer, presets
 │   ├── iterations.ts  shared depth-scaled iteration policy
 │   └── curated.ts  curated views per fractal
+├── render/         ViewportRenderer (routes scenes by family), RasterRenderer (worker client)
+├── workers/        raster.worker.ts: grammar → geometry → OffscreenCanvas → ImageBitmap
 ├── gl/             Framework-free WebGL2 layer
 │   ├── FractalRenderer.ts   frame loop, accumulation, tiled export
 │   ├── ShaderProgram.ts     compile/link with line-numbered errors, cached uniforms
@@ -105,6 +111,7 @@ A few decisions worth calling out:
 - **`SceneSnapshot` is the single serializable unit.** It drives the renderer, the URL, presets and exports. The same type flows through all four, and the compiler enforces that.
 - **Adding a fractal is additive.** Each one implements `EscapeTimeFractal<K>` (shader, defaults, iteration policy, optional uniforms). The registry is a mapped type over `FractalKind`, so forgetting to register a kind is a compile error. `bindFractal()` pairs a state with its definition through an exhaustive `switch`, which lets the compiler correlate `kind` with `params` without a single cast. Julia was added this way; it needed no changes to the renderer beyond that.
 - **The shaders share one escape loop.** Mandelbrot and Julia iterate the same map and differ only in the starting point and in what the derivative is taken with respect to. `escape.glsl` implements the loop once, in both fp32 and df64, and each fragment shader is about 20 lines.
+- **Two render families behind one interface.** `ViewportRenderer` routes each scene to the WebGL pipeline or the worker pipeline and shows the matching canvas. Everything above it (export, thumbnails, presets, URL, pan/zoom) is family-agnostic. The type system enforces the split: `FractalState = EscapeTimeState | RasterState`, and the GPU renderer only accepts an `EscapeScene`.
 - **The GL layer knows nothing about React**, and the interaction controller knows nothing about WebGL. Either could be reused on its own.
 
 ### The render pipeline
@@ -120,6 +127,24 @@ A few decisions worth calling out:
 3. **Once the view settles** (110 ms without changes), full-resolution samples are accumulated one per frame, with sub-pixel jitter from the R2 low-discrepancy sequence. They are blended as a running mean using `CONSTANT_ALPHA = 1/n`. This gives 24× supersampling without ever issuing a long draw call that could trip the GPU watchdog.
 4. **Colour is handled in linear light.** Palettes are uploaded as `SRGB8_ALPHA8`, so sampling returns linear values. Averaging happens in a half-float buffer, and the conversion back to sRGB happens once at present time, together with triangular-PDF dither that removes banding.
 5. **Export** reuses the same passes on 1024² offscreen tiles. Each tile carries a `u_tileOffset` into the full image, so the tiles join seamlessly. Between draws the renderer waits on a GPU fence (`fenceSync` + non-blocking `clientWaitSync`), which keeps the UI responsive and lets you cancel an 8K render.
+
+### The raster pipeline (L-systems)
+
+```
+ main thread                              worker
+ ───────────                              ──────
+ scene change ──▶ reproject last bitmap   expand grammar ─▶ turtle ─▶ geometry (cached)
+      │           (instant preview)                                      │
+      └── post latest request ─────────▶  rasterize on OffscreenCanvas ◀─┘
+                                                  │
+ draw fresh frame ◀──── ImageBitmap (transferred, zero-copy)
+```
+
+- **Nothing heavy runs on the main thread.** Grammar expansion, turtle geometry (up to 1.2M segments) and rasterization all happen in the worker. The finished frame comes back as a *transferred* `ImageBitmap`, so no pixels are copied.
+- **Instant preview.** A large figure can take a few hundred milliseconds to redraw. Meanwhile the main thread redraws the last bitmap with the affine transform from its view to the current one, so pan and zoom track the pointer at display rate.
+- **Coalescing.** At most one screen frame is in flight. Changes made while the worker is busy collapse into a single request for the latest state.
+- **Caching.** Geometry is cached by the parameters that shape it. Changing colour, width or glow only re-rasterizes.
+- **Batching.** One `stroke()` per segment would be far too slow. Segments are bucketed by quantized colour and width into `Path2D` objects, about 500 draw calls regardless of segment count, and off-screen segments are culled.
 
 ### Shader interface
 
@@ -193,6 +218,29 @@ takes that trailing +1 or +0 as a parameter, and nothing else changes. The
 fp32/df64 split, progressive rendering and export all work for Julia as they do
 for Mandelbrot. The df64 path was verified at 10⁸× on the rabbit's boundary,
 where float32 collapses a 256-pixel row to a single value.
+
+### Lindenmayer systems
+
+An L-system (Lindenmayer, 1968) is a **parallel rewriting system**. Start from
+an axiom ω and, at every step, replace *every* symbol at once by its production:
+
+```
+ω : X
+P : X → F+[[X]−X]−F[−FX]+X      F → FF
+```
+
+The resulting word is read by a **turtle**. `F` (or `G`, `A`, `B`) moves forward
+drawing a segment, `f` moves without drawing, `+`/`−` turn by the angle δ, `|`
+turns around, and `[`/`]` push and pop the turtle's state. The brackets turn a
+single path into a branching one, which is what makes the plants possible.
+Letters with no turtle meaning (`X`, `Y`) act as variables: they steer the
+rewriting and are never drawn.
+
+- **Self-similarity.** The Koch curve (`F → F+F−−F+F`, δ = 60°) replaces each segment by four at ⅓ scale. Its length grows as (4/3)ⁿ, and its Hausdorff dimension is log 4 / log 3 ≈ 1.2619. The dragon curve and the Hilbert curve are space-filling in the limit (dimension 2).
+- **Exponential growth, estimated without expansion.** Word length grows exponentially, so a few extra iterations can mean millions of segments. The UI computes the exact segment count from a symbol-count vector, *v*ₙ₊₁ = *M v*ₙ, where *M* is the production matrix. That takes O(n·|Σ|²) and never builds the string, so the iteration slider always knows its budget. A property test checks that the estimate matches the turtle's real output for every preset.
+- **No giant strings.** The turtle walks the rewriting tree depth-first: a symbol at level *n* expands directly into its production at level *n − 1*. The multi-million-character word never exists in memory.
+- **Stochastic variation.** *Organic variance* perturbs each turn (±50% of δ) and each step (±30%) using a seeded Mulberry32 PRNG. Each seed grows a different, perfectly reproducible plant, and the seed travels in the URL.
+- **Branch-aware styling.** The turtle records bracket depth per segment. Width thins geometrically with depth (*taper*), and colour can follow either the drawing order or the branch depth. Palette colours are lifted to a minimum OKLab lightness so the dark ends of a palette stay visible against the background.
 
 ### Smooth colouring
 
@@ -287,7 +335,12 @@ Every change is mirrored, debounced, into the query string with
 ```
 ?f=mandelbrot&x=-0.7436438870371587&y=0.131825904205312&z=11.000&it=400&ai=1&p=ember&d=0.600&o=0.000&e=0.60&in=050507
 ?f=julia&cr=-0.123&ci=0.745&x=0&y=0&z=0&p=gilt
+?f=lsystem&ls=plant&n=7&an=25&jt=0.15&sd=7&cb=depth&p=aurora
 ```
+
+Preset L-systems travel as an id. A custom grammar travels in full and must
+parse, and its iteration count is clamped to the segment budget, so a
+hand-edited link can't request a billion segments.
 
 Coordinates carry only as many digits as the current zoom needs. Decoding is
 defensive: every field is validated and clamped, and malformed input falls
@@ -308,7 +361,7 @@ disappearing silently.
 
 - [x] **Phase 1: Mandelbrot**: shader, df64, progressive AA, pan/zoom, palettes, export, presets, URL state
 - [x] **Phase 2: Julia sets**: shared escape loop, *c* picked live on a Mandelbrot map, orbit animation, two-way Mandelbrot ⇄ Julia bridge
-- [ ] **Phase 3: L-systems**: string rewriting and turtle graphics, generated in a Web Worker and drawn to canvas/SVG
+- [x] **Phase 3: L-systems**: grammar editor, turtle graphics and rasterization in a Web Worker, instant reprojected preview, seeded variance, *Grow* replay
 - [ ] **Phase 4: IFS**: Barnsley fern via the chaos game, accumulated as a density histogram in a Worker
 - [ ] Perturbation theory for zooms beyond 10¹³×
 - [ ] Animated fly-to between presets
@@ -327,3 +380,5 @@ Vite · WebGL2 / GLSL ES 3.00 · Tailwind CSS v4 · Zustand · Vitest · ESLint
 - M. Roberts, *The Unreasonable Effectiveness of Quasirandom Sequences* (R2), 2018
 - H.-O. Peitgen, P. Richter, *The Beauty of Fractals*, 1986
 - Tan Lei, *Similarity between the Mandelbrot set and Julia sets*, Commun. Math. Phys. 134, 1990
+- A. Lindenmayer, *Mathematical models for cellular interactions in development*, J. Theor. Biol. 18, 1968
+- P. Prusinkiewicz, A. Lindenmayer, *The Algorithmic Beauty of Plants*, Springer, 1990

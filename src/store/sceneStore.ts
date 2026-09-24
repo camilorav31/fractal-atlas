@@ -5,6 +5,7 @@ import type {
   ComplexView,
   FractalState,
   IterationParams,
+  LSystemParams,
   SceneSnapshot,
 } from '../fractals/types';
 import { decodeScene } from '../utils/urlState';
@@ -17,6 +18,8 @@ interface SceneActions {
   setIteration(patch: Partial<IterationParams>): void;
   /** Sets Julia's c. Ignored when another fractal is active. */
   setJuliaConstant(cRe: number, cIm: number): void;
+  /** Patches L-system params. Ignored when another fractal is active. */
+  setLSystem(patch: Partial<LSystemParams>): void;
   setColor(patch: Partial<ColorSettings>): void;
   loadSnapshot(snapshot: SceneSnapshot): void;
 }
@@ -44,6 +47,9 @@ export const useSceneStore = create<SceneStore>()((set) => ({
 
   setJuliaConstant: (cRe, cIm) =>
     set((s) => (s.fractal.kind === 'julia' ? { fractal: { kind: 'julia', params: { ...s.fractal.params, cRe, cIm } } } : {})),
+
+  setLSystem: (patch) =>
+    set((s) => (s.fractal.kind === 'lsystem' ? { fractal: { kind: 'lsystem', params: { ...s.fractal.params, ...patch } } } : {})),
 
   setColor: (patch) => set((s) => ({ color: { ...s.color, ...patch } })),
 

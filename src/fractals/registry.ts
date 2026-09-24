@@ -1,27 +1,53 @@
-import type { BoundFractal, EscapeTimeFractal, ParamsOf } from './definition';
-import type { FractalKind, FractalState, IterationParams } from './types';
+import type { BoundFractal, EscapeParamsOf, EscapeTimeFractal, FractalInfo } from './definition';
 import { julia } from './julia';
+import { lsystem, lsystemDefaults } from './lsystem';
 import { mandelbrot } from './mandelbrot';
+import type {
+  EscapeKind,
+  EscapeScene,
+  EscapeTimeState,
+  FractalKind,
+  FractalState,
+  IterationParams,
+  RasterScene,
+  SceneSnapshot,
+} from './types';
 
-/** Registered fractals, keyed by kind. The mapped type makes a missing entry a compile error. */
-export const FRACTALS: { [K in FractalKind]: EscapeTimeFractal<K> } = {
+/** GPU escape-time fractals, keyed by kind. The mapped type makes a missing entry a compile error. */
+export const FRACTALS: { [K in EscapeKind]: EscapeTimeFractal<K> } = {
   mandelbrot,
   julia,
 };
 
-export const FRACTAL_KINDS = Object.keys(FRACTALS) as FractalKind[];
+/** Metadata for every fractal, whatever renders it. */
+export const FRACTAL_INFO: { [K in FractalKind]: FractalInfo<K> } = {
+  mandelbrot,
+  julia,
+  lsystem,
+};
+
+export const FRACTAL_KINDS = Object.keys(FRACTAL_INFO) as FractalKind[];
 
 export function isFractalKind(value: string): value is FractalKind {
-  return value in FRACTALS;
+  return value in FRACTAL_INFO;
+}
+
+export function isEscapeState(state: FractalState): state is EscapeTimeState {
+  return FRACTAL_INFO[state.kind].family === 'escape';
+}
+
+export function isEscapeScene(scene: SceneSnapshot): scene is EscapeScene {
+  return isEscapeState(scene.fractal);
+}
+
+export function isRasterScene(scene: SceneSnapshot): scene is RasterScene {
+  return !isEscapeState(scene.fractal);
 }
 
 /** Kinds announced in the UI but not implemented yet. */
-export const UPCOMING = [
-  { id: 'lsystem', title: 'L-system' },
-  { id: 'ifs', title: 'IFS' },
-] as const;
+export const UPCOMING = [{ id: 'ifs', title: 'IFS' }] as const;
 
-function bind<K extends FractalKind>(definition: EscapeTimeFractal<K>, params: ParamsOf<K>): BoundFractal {
+function bind<K extends EscapeKind>(definition: EscapeTimeFractal<K>, params: EscapeParamsOf<K>): BoundFractal {
   return {
     definition,
     iterations: (zoomLog) => definition.effectiveIterations(params, zoomLog),
@@ -30,11 +56,11 @@ function bind<K extends FractalKind>(definition: EscapeTimeFractal<K>, params: P
 }
 
 /**
- * Pairs a fractal state with its definition. The switch lets the compiler
- * correlate `kind` with `params`, so no cast is needed, and adding a kind
- * without handling it here fails to compile.
+ * Pairs an escape-time state with its definition. The switch lets the
+ * compiler correlate `kind` with `params`, so no cast is needed, and adding
+ * a kind without handling it here fails to compile.
  */
-export function bindFractal(state: FractalState): BoundFractal {
+export function bindFractal(state: EscapeTimeState): BoundFractal {
   switch (state.kind) {
     case 'mandelbrot':
       return bind(FRACTALS.mandelbrot, state.params);
@@ -43,22 +69,26 @@ export function bindFractal(state: FractalState): BoundFractal {
   }
 }
 
-/** Default state for a kind, optionally carrying over the iteration settings. */
+/** Default state for a kind, optionally carrying over escape-time iteration settings. */
 export function defaultFractalState(kind: FractalKind, iteration?: IterationParams): FractalState {
   switch (kind) {
     case 'mandelbrot':
       return { kind, params: { ...FRACTALS.mandelbrot.defaultParams, ...iteration } };
     case 'julia':
       return { kind, params: { ...FRACTALS.julia.defaultParams, ...iteration } };
+    case 'lsystem':
+      return { kind, params: { ...lsystemDefaults } };
   }
 }
 
-/** Returns a copy of `state` with its shared iteration settings patched. */
+/** Returns a copy of `state` with its iteration settings patched (no-op for raster kinds). */
 export function withIteration(state: FractalState, patch: Partial<IterationParams>): FractalState {
   switch (state.kind) {
     case 'mandelbrot':
       return { kind: state.kind, params: { ...state.params, ...patch } };
     case 'julia':
       return { kind: state.kind, params: { ...state.params, ...patch } };
+    case 'lsystem':
+      return state;
   }
 }

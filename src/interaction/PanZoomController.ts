@@ -12,6 +12,8 @@ export interface PanZoomOptions {
   setView(view: ComplexView): void;
   /** Viewport size in CSS px. */
   getSize(): { width: number; height: number };
+  /** Deepest zoom allowed for the current content (log10). */
+  getMaxZoomLog(): number;
 }
 
 /** Time constants (ms) of the exponential smoothing. Lower = snappier. */
@@ -125,7 +127,8 @@ export class PanZoomController {
       const rect = this.element.getBoundingClientRect();
       let view = panBy(this.options.getView(), pinch.mx - this.lastPinch.mx, pinch.my - this.lastPinch.my, height);
       const deltaLog = Math.log10(pinch.distance / this.lastPinch.distance);
-      view = zoomAround(view, pinch.mx - rect.left, pinch.my - rect.top, width, height, view.zoomLog + deltaLog);
+      const zoomLog = Math.min(this.options.getMaxZoomLog(), view.zoomLog + deltaLog);
+      view = zoomAround(view, pinch.mx - rect.left, pinch.my - rect.top, width, height, zoomLog);
       this.write(view);
     }
     this.lastPinch = pinch;
@@ -159,7 +162,8 @@ export class PanZoomController {
 
   private startZoom(deltaLog: number, sx: number, sy: number): void {
     const base = this.zoom?.target ?? this.options.getView().zoomLog;
-    this.zoom = { target: clamp(base + deltaLog, MIN_ZOOM_LOG, MAX_ZOOM_LOG), sx, sy };
+    const max = Math.min(MAX_ZOOM_LOG, this.options.getMaxZoomLog());
+    this.zoom = { target: clamp(base + deltaLog, MIN_ZOOM_LOG, max), sx, sy };
     this.ensureTicking();
   }
 
