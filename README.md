@@ -7,18 +7,14 @@ so a million-segment plant or a twelve-million-point fern never blocks the UI.
 
 <p align="center">
   <a href="https://fractal-atlas.vercel.app"><b>Live demo</b></a> ·
-  <a href="docs/promo.mp4">Promo (1080p)</a> ·
-  <a href="docs/showreel.mp4">Showreel (1080p)</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#the-mathematics">The mathematics</a>
 </p>
 
 <p align="center">
-  <a href="docs/promo.mp4">
-    <img src="docs/promo.gif" alt="Fractal Atlas promo: the title, the four fractal families, a zoom to 10¹³× with a live precision gauge, six palettes in a shareable URL, and the live demo address" width="100%">
-  </a>
+  <img src="docs/promo.gif" alt="Fractal Atlas promo: the title, the four fractal families, a zoom to 10¹³× with a live precision gauge, six palettes in a shareable URL, and the live demo address" width="100%">
   <br>
-  <sub>15-second promo with motion graphics over the same renders · <a href="docs/promo.mp4">watch in 1080p</a> · <a href="#promo-film">how it's made</a></sub>
+  <sub>15-second promo with motion graphics over the same renders · <a href="#promo-film">how it's made</a></sub>
 </p>
 
 | | Fractal | Engine | Highlights |
