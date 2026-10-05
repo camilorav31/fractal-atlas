@@ -2,6 +2,7 @@
 node_modules
 dist
 .showreel
+.promo
 docs
 scripts
 tools

@@ -1,26 +1,10 @@
-import { CURATED } from '../fractals/curated';
-import { FRACTAL_KINDS, isEscapeScene, isRasterScene } from '../fractals/registry';
-import type { ColorSettings, ComplexView, FractalKind, SceneSnapshot } from '../fractals/types';
-import { defaultSnapshot } from '../store/defaults';
-import { FractalRenderer } from '../gl/FractalRenderer';
-import { RasterRenderer } from '../render/RasterRenderer';
+import { gpuInfo, SceneRenderer, type SceneSpec } from './scenes';
 
 /**
  * Showreel capture harness: renders frames through the app's own engines,
  * offscreen, with no UI. Driven frame by frame from Node (scripts/showreel.mjs)
  * so the video has a perfectly steady frame rate regardless of render time.
  */
-
-/** A scene described by reference: a curated view (or a kind's default) plus overrides. */
-export interface SceneSpec {
-  curated?: string;
-  kind?: FractalKind;
-  view?: Partial<ComplexView>;
-  /** Added to the resolved view's zoom (for drifting shots of curated views). */
-  zoomDelta?: number;
-  color?: Partial<ColorSettings>;
-  params?: Record<string, unknown>;
-}
 
 export interface Layer {
   scene: SceneSpec;
@@ -40,31 +24,9 @@ export interface FrameRequest {
   fade: number;
 }
 
-// Both engines stay suspended: nothing is drawn to a visible canvas, only offscreen renders.
-const gpu = new FractalRenderer(document.createElement('canvas'));
-const raster = new RasterRenderer(document.createElement('canvas'));
+const scenes = new SceneRenderer();
 const compose = document.createElement('canvas');
 const ctx = compose.getContext('2d')!;
-
-function resolve(spec: SceneSpec): SceneSnapshot {
-  const curated = spec.curated
-    ? FRACTAL_KINDS.flatMap((k) => CURATED[k]).find((v) => v.id === spec.curated)?.snapshot
-    : undefined;
-  if (spec.curated && !curated) throw new Error(`Unknown curated view: ${spec.curated}`);
-  const base = structuredClone(curated ?? defaultSnapshot(spec.kind ?? 'mandelbrot'));
-  const view = { ...base.view, ...spec.view };
-  return {
-    fractal: { ...base.fractal, params: { ...base.fractal.params, ...spec.params } } as SceneSnapshot['fractal'],
-    view: { ...view, zoomLog: view.zoomLog + (spec.zoomDelta ?? 0) },
-    color: { ...base.color, ...spec.color },
-  };
-}
-
-function render(scene: SceneSnapshot, width: number, height: number, samples: number): Promise<HTMLCanvasElement> {
-  if (isEscapeScene(scene)) return gpu.renderImage(scene, width, height, { samples });
-  if (isRasterScene(scene)) return raster.renderImage(scene, width, height, { samples });
-  throw new Error(`No renderer for ${scene.fractal.kind}`);
-}
 
 async function frame({ layers, width, height, samples, vignette, fade }: FrameRequest): Promise<string> {
   compose.width = width;
@@ -75,7 +37,7 @@ async function frame({ layers, width, height, samples, vignette, fade }: FrameRe
 
   for (const layer of layers) {
     if (layer.alpha <= 0) continue;
-    const image = await render(resolve(layer.scene), width, height, samples);
+    const image = await scenes.render(layer.scene, width, height, samples);
     ctx.globalAlpha = layer.alpha;
     ctx.drawImage(image, 0, 0);
   }
@@ -93,12 +55,6 @@ async function frame({ layers, width, height, samples, vignette, fade }: FrameRe
     ctx.fillRect(0, 0, width, height);
   }
   return compose.toDataURL('image/png');
-}
-
-function gpuInfo(): string {
-  const gl = document.createElement('canvas').getContext('webgl2');
-  const ext = gl?.getExtension('WEBGL_debug_renderer_info');
-  return gl && ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : gl ? 'WebGL2 (renderer hidden)' : 'no WebGL2';
 }
 
 Object.assign(window, { showreel: { frame, gpuInfo, ready: true } });

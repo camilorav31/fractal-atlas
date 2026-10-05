@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "showreel": "node scripts/showreel.mjs"
+    "showreel": "node scripts/showreel.mjs",
+    "promo": "node scripts/promo.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.48.0",

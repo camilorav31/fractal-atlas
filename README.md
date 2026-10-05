@@ -7,6 +7,7 @@ so a million-segment plant or a twelve-million-point fern never blocks the UI.
 
 <p align="center">
   <a href="https://fractal-atlas.vercel.app"><b>Live demo</b></a> ·
+  <a href="docs/promo.mp4">Promo (1080p)</a> ·
   <a href="docs/showreel.mp4">Showreel (1080p)</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#the-mathematics">The mathematics</a>
@@ -18,6 +19,14 @@ so a million-segment plant or a twelve-million-point fern never blocks the UI.
   </a>
   <br>
   <sub>10-second showreel, rendered by the app's own engines with no UI · <a href="docs/showreel.mp4">watch in 1080p</a></sub>
+</p>
+
+<p align="center">
+  <a href="docs/promo.mp4">
+    <img src="docs/promo.gif" alt="Fractal Atlas promo: the title, the four fractal families, a zoom to 10¹³× with a live precision gauge, six palettes in a shareable URL, and the live demo address" width="100%">
+  </a>
+  <br>
+  <sub>15-second promo with motion graphics over the same renders · <a href="docs/promo.mp4">watch in 1080p</a> · <a href="#promo-film">how it's made</a></sub>
 </p>
 
 | | Fractal | Engine | Highlights |
@@ -55,6 +64,7 @@ npm run dev        # http://localhost:5173
 | `npm test`          | Unit tests (Vitest)                                       |
 | `npm run lint`      | ESLint (typescript-eslint + react-hooks)                  |
 | `npm run showreel`  | Re-render the README film (headless Chrome + ffmpeg)      |
+| `npm run promo`     | Re-render the 15 s motion-graphics promo (`docs/promo.mp4`) |
 
 Deployed on **Vercel** as a static build (`vercel.json`: Vite preset, immutable caching for hashed assets).
 
@@ -109,6 +119,7 @@ src/
 │                     useFractalNavigation (Mandelbrot ⇄ Julia), useJuliaOrbit, useLSystemGrow
 ├── store/          Zustand stores: scene, presets (persisted), ui
 ├── showreel/      capture harness for the README film (see Showreel)
+├── promo/         15 s motion-graphics film: timeline, shots, React overlays (see Showreel)
 └── utils/          Pure, unit-tested maths: view transforms, colour, URL codec
 ```
 
@@ -450,13 +461,29 @@ The run is resumable: frames already on disk are kept, and a crashed browser is
 relaunched to retry the frame in flight. The first render is what exposed the
 need for cost-adaptive export tiles.
 
+### Promo film
+
+`npm run promo` renders a second, 15-second film (`docs/promo.mp4`) with motion
+graphics over the same engines. It uses the same offline, frame-by-frame method,
+with one change: each frame is a pure function of its number.
+
+- `src/promo/shots.ts` is the footage: pure functions of time, shared with the overlays so a readout can't drift from the image it describes (the zoom counter, the precision handoff and the Julia *c* pick all read the same values that rendered the frame).
+- `src/promo/acts/` are the five acts as React components styled with the app's own design tokens, composited over the fractal with a slanted gilt wipe between shots.
+- The deep zoom is rendered with temporal supersampling (four sub-frames per frame) so the fast camera move blurs instead of strobing.
+
+`npm run promo -- --preview` renders stills of key frames in seconds, and
+`--frames 120,240` renders exactly the ones you ask for. The README GIF
+(`docs/promo.gif`) is encoded from the same frames, with the film grain smoothed
+first so it doesn't bloat the palette. A full render takes
+about 40 minutes on an M1, almost all of it the df64 dive.
+
 ---
 
 ## Tech stack
 
 React 19 · TypeScript (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) ·
 Vite · WebGL2 / GLSL ES 3.00 · Web Workers / OffscreenCanvas · Tailwind CSS v4 ·
-Zustand · Vitest · ESLint · Puppeteer + ffmpeg (showreel)
+Zustand · Vitest · ESLint · Puppeteer + ffmpeg (showreel, promo)
 
 ## References
 
