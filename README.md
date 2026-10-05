@@ -14,14 +14,6 @@ so a million-segment plant or a twelve-million-point fern never blocks the UI.
 </p>
 
 <p align="center">
-  <a href="docs/showreel.mp4">
-    <img src="docs/showreel.gif" alt="Fractal Atlas showreel: a montage of Mandelbrot, Julia, L-system and IFS renders, then a slow zoom into Seahorse Valley" width="100%">
-  </a>
-  <br>
-  <sub>10-second showreel, rendered by the app's own engines with no UI · <a href="docs/showreel.mp4">watch in 1080p</a></sub>
-</p>
-
-<p align="center">
   <a href="docs/promo.mp4">
     <img src="docs/promo.gif" alt="Fractal Atlas promo: the title, the four fractal families, a zoom to 10¹³× with a live precision gauge, six palettes in a shareable URL, and the live demo address" width="100%">
   </a>
@@ -447,13 +439,13 @@ disappearing silently.
 
 ## Showreel
 
-The film at the top of this page isn't a screen recording. `npm run showreel`
+The showreel (`docs/showreel.mp4`, 10 s, no UI) isn't a screen recording. `npm run showreel`
 renders it **offline, frame by frame**, through the app's own engines:
 
 1. `scripts/showreel.mjs` starts Vite through its Node API and drives headless Chrome with `puppeteer-core`, on the real GPU via ANGLE/Metal.
 2. `tools/showreel/` is a capture page with no UI. It renders each frame at 1920×1080 through the same `FractalRenderer` and raster worker the app uses, with 6× supersampling, and composites crossfades, a vignette and fades on a 2D canvas.
 3. The timeline is declarative: nine drifting shots that cut across all four families, then a 6-second ease-in-out dive into Seahorse Valley to 10⁸·⁸×, well into df64 range.
-4. `ffmpeg` encodes an H.264 master (`docs/showreel.mp4`) and a palette-optimized GIF for this README, since GitHub autoplays GIFs but not repository videos.
+4. `ffmpeg` encodes an H.264 master (`docs/showreel.mp4`) and a palette-optimized GIF preview.
 
 Because every frame waits for its full render, the film plays at a steady 30 fps,
 however long an individual df64 frame takes (the deepest take about 10 s each).
